@@ -243,6 +243,41 @@ Not tested: TimescaleDB itself (the test uses the plain table definitions; the G
 continuous aggregates were not run against rows of the new writer), several nodes writing at once
 to one server, very large runs (batching is per monitor flush, 0.5 s).
 
+### 3.11 Overhead (first measurement, WP-H level L1 microbenchmark)
+
+`tests/bench.c`, `cluster/tool_overhead.sbatch`: 4 ranks on 2 nodes, 20000 iterations, median of 7
+repetitions, three runs per cell, optimized build of the fork (`dev-rel`, job 10426). Time per operation in
+microseconds; percentages are against "no tool".
+
+| Operation | UCX none | UCX PMPI only | UCX MPI_T | ob1 none | ob1 PMPI only | ob1 MPI_T |
+|---|---|---|---|---|---|---|
+| 8 B ping-pong (one way) | 1.87 | 2.52 (+35 %) | 6.18 (+230 %) | 3.69 | 4.18 (+13 %) | 11.7 (+217 %) |
+| `Allreduce` 32 B | 13.8 | 18.8 (+36 %) | 47.4 (+243 %) | 24.3 | 28.3 (+16 %) | 70.6 (+190 %) |
+| `Irecv`+`Isend`+`Waitall` 8 B | 2.46 | 3.83 (+56 %) | 15.3 (+520 %) | 3.52 | 5.18 (+47 %) | 21.7 (+520 %) |
+| `Bcast` 64 KiB | 70.1 | 71.6 (+2 %) | 80.3 (+15 %) | 66.4 | 67.4 (+1 %) | 99.8 (+50 %) |
+
+What the measurement showed:
+
+- These are the worst case: operations of 2 to 25 microseconds, so every microsecond of the tool is
+  visible. For the 64 KiB broadcast the PMPI-only layer costs 1 to 2 percent. The fork with the built-in
+  measurement reported +7 to +9 % for a many-small-calls AMT workload; that benchmark has not been run with
+  this tool yet, so no comparison is claimed.
+- **The clock was the first big cost.** The compute nodes use the HPET clock source, so `clock_gettime`
+  takes 1.26 microseconds (`tests/costs.c`, job 10420). The first version needed two stamps per call:
+  PMPI only cost +4.6 microseconds per call. A calibrated TSC clock (re-anchored by the monitor thread; stays
+  within 0.7 to 2 microseconds of `CLOCK_REALTIME`, tested in `test_store`) brought it to +0.6. A lock-free
+  request table and thread-local caches for communicator and datatype lookups took `Irecv/Isend/Waitall`
+  from +3.8 to +1.4 microseconds per iteration.
+- **The MPI_T layer is the larger part** (+4 to +8 microseconds per ping-pong half). With `pml ob1` the tool
+  registers 8 event types per communicator, a user message raises about 6 of them, and HAN adds internal
+  messages for every collective. The library takes one `clock_gettime` per raised event; an experiment
+  (branch `mpit/event-fast-clock` in the local clone, not pushed) that took the event time stamps from the TSC
+  (`mpit-fast` in the job output) brought **no measurable gain** (UCX ping-pong 6.2 to 7.0, ob1 11.7 to 11.5), so
+  the cost is not the library's clock but event delivery and the callbacks. The branch is not proposed.
+- Not yet done: reduce what is registered (for example only the activate/match/transfer events of user
+  requests, or a switch for matching data), profile the callback path, repeat on a workload with a realistic call
+  rate, measure the library with events registered but without the tool.
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs
