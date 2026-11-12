@@ -444,6 +444,28 @@ The earlier tests (request state, request-bound PVARs, lifetime with 200000 iter
 The tool does not use the generic pair for point-to-point requests (it keeps the envelope events); the pair is for other tools and
 for the WG document.
 
+### 3.19 Differential test against the original fork (G5, first round)
+
+Job `cluster/tool_vs_fork.sbatch` (10481): the same programs (`test_calls`: blocking and non-blocking p2p, Sendrecv, collectives on
+world/split/dup communicators, one-sided; `test_nbc`) run with the original EduMPI fork (Open MPI 5.0.11rc1, qentry, installation
+`~/EduMPI_Testumgebung` used read-only) and with the new tool on the MPI_T fork build; both on ob1/sm, 4 ranks, into two databases of a
+private PostgreSQL server on 127.0.0.1. `tests/compare_rows.py` compares per (rank, function) the number of rows, type, send and receive
+bytes, partner and bitmap (no times, no algorithm text). 60 groups; 44 are identical. The other 16 are understood:
+
+| Group | Fork | Tool | Reason |
+|---|---|---|---|
+| `MPI_Iallreduce` (4 ranks) | 120 / 1200 bytes per rank | 160 or 80 / 1600 or 800 | different Open MPI versions choose different algorithms (`ared_binomial` against libnbc `binomial`); the sums over all ranks are equal (480 and 4800 bytes), the bitmaps differ with the algorithm |
+| `MPI_Alltoallv` | send 0, empty bitmap | send 12, bitmap of the partners | the fork does not evaluate the count arrays; the tool takes them from the arguments and the bitmap from the messages |
+| `MPI_Put` | 80 / 80 | 40 / 0 | the fork counts the one-sided traffic on both sides; the tool reports the 40 bytes of the origin |
+| `MPI_Isend_done` (extra rows) | none | one per rank | the tool writes the synthetic completion row of a send that was still in flight; the fork only with `EDUMPI_SEND_COMPLETION` |
+
+Two real differences were found and fixed: `MPI_Sendrecv` took the source of the receive as partner (the fork: the destination); a blocking
+receive now only sets the partner from the sender when it is MPI_ANY_SOURCE. Not changed: `partnerrank` of collective rows (the fork
+stores one internal peer, the tool -1; the bitmap is the information) and one more `MPI_Barrier` row of the fork per rank 0
+(internal barrier of its own `MPI_Finalize`).
+The algorithm names differ in form (`recursive_doubling` against `tuned recursive_doubling`) and, between Open MPI versions, in the
+decision (`binary_tree` against `binomial`); a same-version comparison needs the fork port to main, which does not exist.
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs

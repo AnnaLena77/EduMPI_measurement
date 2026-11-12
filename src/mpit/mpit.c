@@ -281,7 +281,9 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
         if (cur && !(cur->flags & EDUMPI_F_COLLECTIVE) && (cur->flags & EDUMPI_F_BLOCKING) && is_recv
             && !(cur->flags & EDUMPI_F_EVENT_DONE)) {
             cur->done_ns = when;
-            cur->partner = pw;
+            if (cur->partner < 0) {
+                cur->partner = pw;          /* MPI_ANY_SOURCE: the sender; Sendrecv keeps its destination (as the fork) */
+            }
             cur->recv_bytes = len;
             cur->flags |= EDUMPI_F_HAS_DONE | EDUMPI_F_EVENT_DONE;
         }

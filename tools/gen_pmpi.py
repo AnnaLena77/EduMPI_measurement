@@ -189,7 +189,8 @@ def main(out):
         if blocking and isrecv:
             o.append('        if (MPI_SUCCESS == rc_) {')
             o.append('            int n_ = 0;')
-            o.append('            r_->partner = edumpi_world(%s, st_->MPI_SOURCE);' % comm)
+            if not peer:   # a call with a destination (Sendrecv) keeps it as its partner, as the fork does
+                o.append('            r_->partner = edumpi_world(%s, st_->MPI_SOURCE);' % comm)
             o.append('            PMPI_Get_count(st_, MPI_BYTE, &n_);')
             o.append('            r_->recv_bytes = n_;')
             o.append('        }')

@@ -424,7 +424,6 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int 
         r_->partner = edumpi_world(comm, dest);
         if (MPI_SUCCESS == rc_) {
             int n_ = 0;
-            r_->partner = edumpi_world(comm, st_->MPI_SOURCE);
             PMPI_Get_count(st_, MPI_BYTE, &n_);
             r_->recv_bytes = n_;
         }
@@ -453,7 +452,6 @@ int MPI_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype, int dest, 
         r_->partner = edumpi_world(comm, dest);
         if (MPI_SUCCESS == rc_) {
             int n_ = 0;
-            r_->partner = edumpi_world(comm, st_->MPI_SOURCE);
             PMPI_Get_count(st_, MPI_BYTE, &n_);
             r_->recv_bytes = n_;
         }
