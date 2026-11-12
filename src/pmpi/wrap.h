@@ -20,6 +20,16 @@ int edumpi_wworld(MPI_Win win, int rank);
 int64_t edumpi_vsum(const int *counts, int n, MPI_Datatype dt);
 int64_t edumpi_wsum(const int *counts, const MPI_Datatype *types, int n);
 
+/* MPI_T backend (src/mpit/mpit.c) */
+extern int edumpi_mpit_active;                   /* 1 if the library offers the events and they are registered */
+extern _Thread_local edumpi_rec_t *edumpi_tls_cur;   /* record of the MPI call this thread is in */
+extern _Thread_local int edumpi_tls_op;          /* COLLTYPE of that call, -1 if not a collective */
+void edumpi_mpit_init(void);                     /* before PMPI_Init */
+void edumpi_mpit_after_init(void);               /* after PMPI_Init: register on MPI_COMM_WORLD / SELF */
+void edumpi_mpit_finalize(void);                 /* before PMPI_Finalize */
+/* completion data from an event; token = MPI_Request handle. Returns 1 if applied, 0 if stashed for later. */
+int edumpi_req_fill(uintptr_t token, uint64_t when_ns, int partner, int64_t bytes, int is_recv);
+
 /* request tracking: a non-blocking call leaves its record open until the request completes */
 enum { EDUMPI_REQ_SEND = 0, EDUMPI_REQ_RECV = 1, EDUMPI_REQ_COLL = 2, EDUMPI_REQ_WIN = 3 };
 void edumpi_req_add(MPI_Request req, edumpi_rec_t *rec, MPI_Comm comm, int kind);

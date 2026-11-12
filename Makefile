@@ -5,7 +5,7 @@ CORE = src/core/store.c src/core/file_sink.c
 
 all: libedumpi.so
 
-PMPI = src/pmpi/init.c src/pmpi/track.c src/pmpi/wrappers.c
+PMPI = src/pmpi/init.c src/pmpi/track.c src/pmpi/wrappers.c src/mpit/mpit.c
 
 src/pmpi/wrappers.c: tools/gen_pmpi.py
 	python3 tools/gen_pmpi.py $@

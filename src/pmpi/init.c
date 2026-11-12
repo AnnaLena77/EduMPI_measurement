@@ -26,11 +26,16 @@ static void start_tool(void)
     PMPI_Get_processor_name(node, &len);
     edumpi_store_init(rank, size, node, edumpi_file_sink_new(dir ? dir : "."), ms ? (unsigned) atoi(ms) : 500);
     edumpi_enabled = 1;
+    edumpi_mpit_after_init();
 }
 
 int MPI_Init(int *argc, char ***argv)
 {
-    int rc = PMPI_Init(argc, argv);
+    int rc;
+    if (!getenv("EDUMPI_DISABLE")) {
+        edumpi_mpit_init();
+    }
+    rc = PMPI_Init(argc, argv);
     if (MPI_SUCCESS == rc) {
         start_tool();
     }
@@ -39,7 +44,11 @@ int MPI_Init(int *argc, char ***argv)
 
 int MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
 {
-    int rc = PMPI_Init_thread(argc, argv, required, provided);
+    int rc;
+    if (!getenv("EDUMPI_DISABLE")) {
+        edumpi_mpit_init();
+    }
+    rc = PMPI_Init_thread(argc, argv, required, provided);
     if (MPI_SUCCESS == rc) {
         start_tool();
     }
@@ -50,6 +59,7 @@ int MPI_Finalize(void)
 {
     if (edumpi_enabled) {
         edumpi_enabled = 0;
+        edumpi_mpit_finalize();
         edumpi_store_finalize();
     }
     return PMPI_Finalize();

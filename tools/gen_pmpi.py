@@ -92,6 +92,14 @@ ros|Raccumulate|const void *origin_addr, int origin_count, MPI_Datatype origin_d
 ros|Rget_accumulate|const void *origin_addr, int origin_count, MPI_Datatype origin_datatype, void *result_addr, int result_count, MPI_Datatype result_datatype, int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype, MPI_Op op, MPI_Win win, MPI_Request *request|s=EB(origin_count,origin_datatype) r=EB(result_count,result_datatype) peer=target_rank
 '''
 
+# COLLTYPE numbers of ompi/mca/coll/base/coll_base_functions.h (blocking and non-blocking operation share the number)
+OPID = {'Allgather': 0, 'Allgatherv': 1, 'Allreduce': 2, 'Alltoall': 3, 'Alltoallv': 4, 'Alltoallw': 5, 'Barrier': 6,
+        'Bcast': 7, 'Exscan': 8, 'Gather': 9, 'Gatherv': 10, 'Reduce': 11, 'Reduce_scatter': 12,
+        'Reduce_scatter_block': 13, 'Scan': 14, 'Scatter': 15, 'Scatterv': 16}
+for _k in list(OPID):
+    OPID['I' + _k[0].lower() + _k[1:]] = OPID[_k]
+
+
 def pname(p):
     p = p.strip()
     m = re.search(r'(\w+)(\[\])?$', p)
@@ -138,11 +146,24 @@ def main(out):
         o.append('        return PMPI_%s(%s);' % (name, ', '.join(names)))
         o.append('    }')
         o.append('    r_ = edumpi_rec_begin("MPI_%s", &fid_, %s, %s);' % (name, cid, fl))
+        iscoll = kind in ('coll', 'icoll')
+        o.append('    edumpi_tls_cur = r_;')
+        if iscoll:
+            o.append('    edumpi_tls_op = %s;' % OPID.get(name, -1))
         o.append('    rc_ = PMPI_%s(%s);' % (name, ', '.join(call_args)))
+        o.append('    edumpi_tls_cur = NULL;')
+        if iscoll:
+            o.append('    edumpi_tls_op = -1;')
         o.append('    if (r_) {')
         o.append('        r_->end_ns = edumpi_now_ns();')
-        if s != '0': o.append('        r_->send_bytes = %s;' % s)
-        if r != '0': o.append('        r_->recv_bytes = %s;' % r)
+        if iscoll and (s != '0' or r != '0'):
+            o.append('        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */')
+            if s != '0': o.append('            r_->send_bytes = %s;' % s)
+            if r != '0': o.append('            r_->recv_bytes = %s;' % r)
+            o.append('        }')
+        else:
+            if s != '0': o.append('        r_->send_bytes = %s;' % s)
+            if r != '0': o.append('        r_->recv_bytes = %s;' % r)
         if peer:
             o.append('        r_->partner = %s;' % ('edumpi_wworld(win, %s)' % peer if win else 'edumpi_world(%s, %s)' % (comm, peer)))
         if blocking and isrecv:

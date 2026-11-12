@@ -24,6 +24,8 @@ enum {
     EDUMPI_F_ANY_SOURCE = 1u << 4,  /* receive posted with MPI_ANY_SOURCE; partner is the real sender */
     EDUMPI_F_NOT_COMPLETED = 1u << 5, /* request had not completed when the record was written */
     EDUMPI_F_NO_END     = 1u << 6,  /* call had not returned when the record was written */
+    EDUMPI_F_MPIT_SUM   = 1u << 7,  /* collective: send/recv bytes and partner bitmap are sums over the library's internal messages (MPI_T) */
+    EDUMPI_F_EVENT_DONE = 1u << 8,  /* done_ns, partner and recv_bytes come from MPI_T completion events, not from a wait or test */
 };
 
 /* state of a record in the store */

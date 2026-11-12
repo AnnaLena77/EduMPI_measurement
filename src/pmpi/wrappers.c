@@ -11,7 +11,9 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
         return PMPI_Send(buf, count, datatype, dest, tag, comm);
     }
     r_ = edumpi_rec_begin("MPI_Send", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Send(buf, count, datatype, dest, tag, comm);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -30,7 +32,9 @@ int MPI_Bsend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
         return PMPI_Bsend(buf, count, datatype, dest, tag, comm);
     }
     r_ = edumpi_rec_begin("MPI_Bsend", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Bsend(buf, count, datatype, dest, tag, comm);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -49,7 +53,9 @@ int MPI_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
         return PMPI_Ssend(buf, count, datatype, dest, tag, comm);
     }
     r_ = edumpi_rec_begin("MPI_Ssend", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Ssend(buf, count, datatype, dest, tag, comm);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -68,7 +74,9 @@ int MPI_Rsend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
         return PMPI_Rsend(buf, count, datatype, dest, tag, comm);
     }
     r_ = edumpi_rec_begin("MPI_Rsend", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Rsend(buf, count, datatype, dest, tag, comm);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -87,7 +95,9 @@ int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
         return PMPI_Isend(buf, count, datatype, dest, tag, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Isend", &fid_, edumpi_cid(comm), 0);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Isend(buf, count, datatype, dest, tag, comm, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -110,7 +120,9 @@ int MPI_Ibsend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
         return PMPI_Ibsend(buf, count, datatype, dest, tag, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ibsend", &fid_, edumpi_cid(comm), 0);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Ibsend(buf, count, datatype, dest, tag, comm, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -133,7 +145,9 @@ int MPI_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
         return PMPI_Issend(buf, count, datatype, dest, tag, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Issend", &fid_, edumpi_cid(comm), 0);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Issend(buf, count, datatype, dest, tag, comm, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -156,7 +170,9 @@ int MPI_Irsend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
         return PMPI_Irsend(buf, count, datatype, dest, tag, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Irsend", &fid_, edumpi_cid(comm), 0);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Irsend(buf, count, datatype, dest, tag, comm, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -181,7 +197,9 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag, M
         return PMPI_Recv(buf, count, datatype, source, tag, comm, status);
     }
     r_ = edumpi_rec_begin("MPI_Recv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|(source==MPI_ANY_SOURCE?EDUMPI_F_ANY_SOURCE:0));
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Recv(buf, count, datatype, source, tag, comm, st_);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         if (MPI_SUCCESS == rc_) {
@@ -204,7 +222,9 @@ int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, 
         return PMPI_Irecv(buf, count, datatype, source, tag, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Irecv", &fid_, edumpi_cid(comm), (source==MPI_ANY_SOURCE?EDUMPI_F_ANY_SOURCE:0));
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Irecv(buf, count, datatype, source, tag, comm, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         if (MPI_SUCCESS == rc_) {
@@ -227,7 +247,9 @@ int MPI_Mrecv(void *buf, int count, MPI_Datatype datatype, MPI_Message *message,
         return PMPI_Mrecv(buf, count, datatype, message, status);
     }
     r_ = edumpi_rec_begin("MPI_Mrecv", &fid_, EDUMPI_NO_COMM, EDUMPI_F_BLOCKING);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Mrecv(buf, count, datatype, message, st_);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         if (MPI_SUCCESS == rc_) {
@@ -250,7 +272,9 @@ int MPI_Imrecv(void *buf, int count, MPI_Datatype datatype, MPI_Message *message
         return PMPI_Imrecv(buf, count, datatype, message, request);
     }
     r_ = edumpi_rec_begin("MPI_Imrecv", &fid_, EDUMPI_NO_COMM, 0);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Imrecv(buf, count, datatype, message, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         if (MPI_SUCCESS == rc_) {
@@ -273,7 +297,9 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int 
         return PMPI_Sendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf, recvcount, recvtype, source, recvtag, comm, status);
     }
     r_ = edumpi_rec_begin("MPI_Sendrecv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|(source==MPI_ANY_SOURCE?EDUMPI_F_ANY_SOURCE:0));
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Sendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf, recvcount, recvtype, source, recvtag, comm, st_);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(sendcount,sendtype);
@@ -300,7 +326,9 @@ int MPI_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype, int dest, 
         return PMPI_Sendrecv_replace(buf, count, datatype, dest, sendtag, source, recvtag, comm, status);
     }
     r_ = edumpi_rec_begin("MPI_Sendrecv_replace", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|(source==MPI_ANY_SOURCE?EDUMPI_F_ANY_SOURCE:0));
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Sendrecv_replace(buf, count, datatype, dest, sendtag, source, recvtag, comm, st_);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -326,7 +354,9 @@ int MPI_Isendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, int
         return PMPI_Isendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf, recvcount, recvtype, source, recvtag, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Isendrecv", &fid_, edumpi_cid(comm), (source==MPI_ANY_SOURCE?EDUMPI_F_ANY_SOURCE:0));
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Isendrecv(sendbuf, sendcount, sendtype, dest, sendtag, recvbuf, recvcount, recvtype, source, recvtag, comm, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(sendcount,sendtype);
@@ -351,7 +381,9 @@ int MPI_Isendrecv_replace(void *buf, int count, MPI_Datatype datatype, int dest,
         return PMPI_Isendrecv_replace(buf, count, datatype, dest, sendtag, source, recvtag, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Isendrecv_replace", &fid_, edumpi_cid(comm), (source==MPI_ANY_SOURCE?EDUMPI_F_ANY_SOURCE:0));
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Isendrecv_replace(buf, count, datatype, dest, sendtag, source, recvtag, comm, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(count,datatype);
@@ -375,7 +407,11 @@ int MPI_Barrier(MPI_Comm comm)
         return PMPI_Barrier(comm);
     }
     r_ = edumpi_rec_begin("MPI_Barrier", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 6;
     rc_ = PMPI_Barrier(comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         edumpi_complete(r_);
@@ -392,11 +428,17 @@ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm
         return PMPI_Bcast(buffer, count, datatype, root, comm);
     }
     r_ = edumpi_rec_begin("MPI_Bcast", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 7;
     rc_ = PMPI_Bcast(buffer, count, datatype, root, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
-        r_->recv_bytes = (edumpi_crank(comm)!=root?EB(count,datatype):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
+            r_->recv_bytes = (edumpi_crank(comm)!=root?EB(count,datatype):0);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -411,11 +453,17 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, voi
         return PMPI_Allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Allgather", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 0;
     rc_ = PMPI_Allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -430,11 +478,17 @@ int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, vo
         return PMPI_Allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Allgatherv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 1;
     rc_ = PMPI_Allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -449,11 +503,17 @@ int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype da
         return PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
     }
     r_ = edumpi_rec_begin("MPI_Allreduce", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 2;
     rc_ = PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = EB(count,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = EB(count,datatype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -468,11 +528,17 @@ int MPI_Alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
         return PMPI_Alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Alltoall", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 3;
     rc_ = PMPI_Alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
-        r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+            r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -487,11 +553,17 @@ int MPI_Alltoallv(const void *sendbuf, const int sendcounts[], const int sdispls
         return PMPI_Alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Alltoallv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 4;
     rc_ = PMPI_Alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype);
-        r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype);
+            r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -506,11 +578,17 @@ int MPI_Alltoallw(const void *sendbuf, const int sendcounts[], const int sdispls
         return PMPI_Alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm);
     }
     r_ = edumpi_rec_begin("MPI_Alltoallw", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 5;
     rc_ = PMPI_Alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = edumpi_wsum(sendcounts,sendtypes,edumpi_csize(comm));
-        r_->recv_bytes = edumpi_wsum(recvcounts,recvtypes,edumpi_csize(comm));
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = edumpi_wsum(sendcounts,sendtypes,edumpi_csize(comm));
+            r_->recv_bytes = edumpi_wsum(recvcounts,recvtypes,edumpi_csize(comm));
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -525,11 +603,17 @@ int MPI_Exscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
         return PMPI_Exscan(sendbuf, recvbuf, count, datatype, op, comm);
     }
     r_ = edumpi_rec_begin("MPI_Exscan", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 8;
     rc_ = PMPI_Exscan(sendbuf, recvbuf, count, datatype, op, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = EB(count,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = EB(count,datatype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -544,11 +628,17 @@ int MPI_Scan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatyp
         return PMPI_Scan(sendbuf, recvbuf, count, datatype, op, comm);
     }
     r_ = edumpi_rec_begin("MPI_Scan", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 14;
     rc_ = PMPI_Scan(sendbuf, recvbuf, count, datatype, op, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = EB(count,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = EB(count,datatype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -563,11 +653,17 @@ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *
         return PMPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
     }
     r_ = edumpi_rec_begin("MPI_Gather", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 9;
     rc_ = PMPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = (edumpi_crank(comm)==root?EB(recvcount,recvtype)*edumpi_csize(comm):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = (edumpi_crank(comm)==root?EB(recvcount,recvtype)*edumpi_csize(comm):0);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -582,11 +678,17 @@ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void 
         return PMPI_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm);
     }
     r_ = edumpi_rec_begin("MPI_Gatherv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 10;
     rc_ = PMPI_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = (edumpi_crank(comm)==root?edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = (edumpi_crank(comm)==root?edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype):0);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -601,11 +703,17 @@ int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
         return PMPI_Reduce(sendbuf, recvbuf, count, datatype, op, root, comm);
     }
     r_ = edumpi_rec_begin("MPI_Reduce", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 11;
     rc_ = PMPI_Reduce(sendbuf, recvbuf, count, datatype, op, root, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -620,11 +728,17 @@ int MPI_Reduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts[
         return PMPI_Reduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, comm);
     }
     r_ = edumpi_rec_begin("MPI_Reduce_scatter", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 12;
     rc_ = PMPI_Reduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),datatype);
-        r_->recv_bytes = EB(recvcounts[edumpi_crank(comm)],datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),datatype);
+            r_->recv_bytes = EB(recvcounts[edumpi_crank(comm)],datatype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -639,11 +753,17 @@ int MPI_Reduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount, 
         return PMPI_Reduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm);
     }
     r_ = edumpi_rec_begin("MPI_Reduce_scatter_block", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 13;
     rc_ = PMPI_Reduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(recvcount,datatype)*edumpi_csize(comm);
-        r_->recv_bytes = EB(recvcount,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(recvcount,datatype)*edumpi_csize(comm);
+            r_->recv_bytes = EB(recvcount,datatype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -658,11 +778,17 @@ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void 
         return PMPI_Scatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
     }
     r_ = edumpi_rec_begin("MPI_Scatter", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 15;
     rc_ = PMPI_Scatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (edumpi_crank(comm)==root?EB(sendcount,sendtype)*edumpi_csize(comm):0);
-        r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (edumpi_crank(comm)==root?EB(sendcount,sendtype)*edumpi_csize(comm):0);
+            r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -677,11 +803,17 @@ int MPI_Scatterv(const void *sendbuf, const int sendcounts[], const int displs[]
         return PMPI_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm);
     }
     r_ = edumpi_rec_begin("MPI_Scatterv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 16;
     rc_ = PMPI_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (edumpi_crank(comm)==root?edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype):0);
-        r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (edumpi_crank(comm)==root?edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype):0);
+            r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -696,11 +828,17 @@ int MPI_Neighbor_allgather(const void *sendbuf, int sendcount, MPI_Datatype send
         return PMPI_Neighbor_allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_allgather", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Neighbor_allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(sendcount,sendtype);
-        r_->recv_bytes = EB(recvcount,recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(sendcount,sendtype);
+            r_->recv_bytes = EB(recvcount,recvtype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -715,10 +853,16 @@ int MPI_Neighbor_allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sen
         return PMPI_Neighbor_allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_allgatherv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Neighbor_allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(sendcount,sendtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(sendcount,sendtype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -733,11 +877,17 @@ int MPI_Neighbor_alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendt
         return PMPI_Neighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_alltoall", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Neighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(sendcount,sendtype);
-        r_->recv_bytes = EB(recvcount,recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(sendcount,sendtype);
+            r_->recv_bytes = EB(recvcount,recvtype);
+        }
         edumpi_complete(r_);
     }
     return rc_;
@@ -752,7 +902,11 @@ int MPI_Neighbor_alltoallv(const void *sendbuf, const int sendcounts[], const in
         return PMPI_Neighbor_alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm);
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_alltoallv", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Neighbor_alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         edumpi_complete(r_);
@@ -769,7 +923,11 @@ int MPI_Neighbor_alltoallw(const void *sendbuf, const int sendcounts[], const MP
         return PMPI_Neighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm);
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_alltoallw", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Neighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         edumpi_complete(r_);
@@ -786,7 +944,11 @@ int MPI_Ibarrier(MPI_Comm comm, MPI_Request *request)
         return PMPI_Ibarrier(comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ibarrier", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 6;
     rc_ = PMPI_Ibarrier(comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         if (MPI_SUCCESS == rc_) {
@@ -807,11 +969,17 @@ int MPI_Ibcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Com
         return PMPI_Ibcast(buffer, count, datatype, root, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ibcast", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 7;
     rc_ = PMPI_Ibcast(buffer, count, datatype, root, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
-        r_->recv_bytes = (edumpi_crank(comm)!=root?EB(count,datatype):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
+            r_->recv_bytes = (edumpi_crank(comm)!=root?EB(count,datatype):0);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -830,11 +998,17 @@ int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, vo
         return PMPI_Iallgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Iallgather", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 0;
     rc_ = PMPI_Iallgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -853,11 +1027,17 @@ int MPI_Iallgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, v
         return PMPI_Iallgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Iallgatherv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 1;
     rc_ = PMPI_Iallgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -876,11 +1056,17 @@ int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype d
         return PMPI_Iallreduce(sendbuf, recvbuf, count, datatype, op, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Iallreduce", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 2;
     rc_ = PMPI_Iallreduce(sendbuf, recvbuf, count, datatype, op, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = EB(count,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = EB(count,datatype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -899,11 +1085,17 @@ int MPI_Ialltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype, voi
         return PMPI_Ialltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ialltoall", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 3;
     rc_ = PMPI_Ialltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
-        r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+            r_->recv_bytes = EB(recvcount,recvtype)*edumpi_csize(comm);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -922,11 +1114,17 @@ int MPI_Ialltoallv(const void *sendbuf, const int sendcounts[], const int sdispl
         return PMPI_Ialltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ialltoallv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 4;
     rc_ = PMPI_Ialltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype);
-        r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype);
+            r_->recv_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -945,11 +1143,17 @@ int MPI_Ialltoallw(const void *sendbuf, const int sendcounts[], const int sdispl
         return PMPI_Ialltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ialltoallw", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 5;
     rc_ = PMPI_Ialltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = edumpi_wsum(sendcounts,sendtypes,edumpi_csize(comm));
-        r_->recv_bytes = edumpi_wsum(recvcounts,recvtypes,edumpi_csize(comm));
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = edumpi_wsum(sendcounts,sendtypes,edumpi_csize(comm));
+            r_->recv_bytes = edumpi_wsum(recvcounts,recvtypes,edumpi_csize(comm));
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -968,11 +1172,17 @@ int MPI_Iexscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype data
         return PMPI_Iexscan(sendbuf, recvbuf, count, datatype, op, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Iexscan", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 8;
     rc_ = PMPI_Iexscan(sendbuf, recvbuf, count, datatype, op, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = EB(count,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = EB(count,datatype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -991,11 +1201,17 @@ int MPI_Iscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype dataty
         return PMPI_Iscan(sendbuf, recvbuf, count, datatype, op, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Iscan", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 14;
     rc_ = PMPI_Iscan(sendbuf, recvbuf, count, datatype, op, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = EB(count,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = EB(count,datatype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1014,11 +1230,17 @@ int MPI_Igather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void 
         return PMPI_Igather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Igather", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 9;
     rc_ = PMPI_Igather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = (edumpi_crank(comm)==root?EB(recvcount,recvtype)*edumpi_csize(comm):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = (edumpi_crank(comm)==root?EB(recvcount,recvtype)*edumpi_csize(comm):0);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1037,11 +1259,17 @@ int MPI_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
         return PMPI_Igatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Igatherv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 10;
     rc_ = PMPI_Igatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
-        r_->recv_bytes = (edumpi_crank(comm)==root?edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (sendbuf==MPI_IN_PLACE?0:EB(sendcount,sendtype));
+            r_->recv_bytes = (edumpi_crank(comm)==root?edumpi_vsum(recvcounts,edumpi_csize(comm),recvtype):0);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1060,11 +1288,17 @@ int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype data
         return PMPI_Ireduce(sendbuf, recvbuf, count, datatype, op, root, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ireduce", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 11;
     rc_ = PMPI_Ireduce(sendbuf, recvbuf, count, datatype, op, root, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(count,datatype);
-        r_->recv_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(count,datatype);
+            r_->recv_bytes = (edumpi_crank(comm)==root?EB(count,datatype):0);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1083,11 +1317,17 @@ int MPI_Ireduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts
         return PMPI_Ireduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ireduce_scatter", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 12;
     rc_ = PMPI_Ireduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),datatype);
-        r_->recv_bytes = EB(recvcounts[edumpi_crank(comm)],datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = edumpi_vsum(recvcounts,edumpi_csize(comm),datatype);
+            r_->recv_bytes = EB(recvcounts[edumpi_crank(comm)],datatype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1106,11 +1346,17 @@ int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount,
         return PMPI_Ireduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ireduce_scatter_block", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 13;
     rc_ = PMPI_Ireduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(recvcount,datatype)*edumpi_csize(comm);
-        r_->recv_bytes = EB(recvcount,datatype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(recvcount,datatype)*edumpi_csize(comm);
+            r_->recv_bytes = EB(recvcount,datatype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1129,11 +1375,17 @@ int MPI_Iscatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
         return PMPI_Iscatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Iscatter", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 15;
     rc_ = PMPI_Iscatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (edumpi_crank(comm)==root?EB(sendcount,sendtype)*edumpi_csize(comm):0);
-        r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (edumpi_crank(comm)==root?EB(sendcount,sendtype)*edumpi_csize(comm):0);
+            r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1152,11 +1404,17 @@ int MPI_Iscatterv(const void *sendbuf, const int sendcounts[], const int displs[
         return PMPI_Iscatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Iscatterv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = 16;
     rc_ = PMPI_Iscatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = (edumpi_crank(comm)==root?edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype):0);
-        r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = (edumpi_crank(comm)==root?edumpi_vsum(sendcounts,edumpi_csize(comm),sendtype):0);
+            r_->recv_bytes = (recvbuf==MPI_IN_PLACE?0:EB(recvcount,recvtype));
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1175,11 +1433,17 @@ int MPI_Ineighbor_allgather(const void *sendbuf, int sendcount, MPI_Datatype sen
         return PMPI_Ineighbor_allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_allgather", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Ineighbor_allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(sendcount,sendtype);
-        r_->recv_bytes = EB(recvcount,recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(sendcount,sendtype);
+            r_->recv_bytes = EB(recvcount,recvtype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1198,10 +1462,16 @@ int MPI_Ineighbor_allgatherv(const void *sendbuf, int sendcount, MPI_Datatype se
         return PMPI_Ineighbor_allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_allgatherv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Ineighbor_allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(sendcount,sendtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(sendcount,sendtype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1220,11 +1490,17 @@ int MPI_Ineighbor_alltoall(const void *sendbuf, int sendcount, MPI_Datatype send
         return PMPI_Ineighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_alltoall", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Ineighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
-        r_->send_bytes = EB(sendcount,sendtype);
-        r_->recv_bytes = EB(recvcount,recvtype);
+        if (!(r_->flags & EDUMPI_F_MPIT_SUM)) {   /* else: sums over the internal messages */
+            r_->send_bytes = EB(sendcount,sendtype);
+            r_->recv_bytes = EB(recvcount,recvtype);
+        }
         if (MPI_SUCCESS == rc_) {
             edumpi_req_add(*request, r_, comm, EDUMPI_REQ_COLL);
         } else {
@@ -1243,7 +1519,11 @@ int MPI_Ineighbor_alltoallv(const void *sendbuf, const int sendcounts[], const i
         return PMPI_Ineighbor_alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_alltoallv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Ineighbor_alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         if (MPI_SUCCESS == rc_) {
@@ -1264,7 +1544,11 @@ int MPI_Ineighbor_alltoallw(const void *sendbuf, const int sendcounts[], const M
         return PMPI_Ineighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, request);
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_alltoallw", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
+    edumpi_tls_cur = r_;
+    edumpi_tls_op = -1;
     rc_ = PMPI_Ineighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, request);
+    edumpi_tls_cur = NULL;
+    edumpi_tls_op = -1;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         if (MPI_SUCCESS == rc_) {
@@ -1285,7 +1569,9 @@ int MPI_Put(const void *origin_addr, int origin_count, MPI_Datatype origin_datat
         return PMPI_Put(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win);
     }
     r_ = edumpi_rec_begin("MPI_Put", &fid_, edumpi_wid(win), EDUMPI_F_BLOCKING|EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Put(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(origin_count,origin_datatype);
@@ -1304,7 +1590,9 @@ int MPI_Get(void *origin_addr, int origin_count, MPI_Datatype origin_datatype, i
         return PMPI_Get(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win);
     }
     r_ = edumpi_rec_begin("MPI_Get", &fid_, edumpi_wid(win), EDUMPI_F_BLOCKING|EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Get(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->recv_bytes = EB(origin_count,origin_datatype);
@@ -1323,7 +1611,9 @@ int MPI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype origi
         return PMPI_Accumulate(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, op, win);
     }
     r_ = edumpi_rec_begin("MPI_Accumulate", &fid_, edumpi_wid(win), EDUMPI_F_BLOCKING|EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Accumulate(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, op, win);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(origin_count,origin_datatype);
@@ -1342,7 +1632,9 @@ int MPI_Get_accumulate(const void *origin_addr, int origin_count, MPI_Datatype o
         return PMPI_Get_accumulate(origin_addr, origin_count, origin_datatype, result_addr, result_count, result_datatype, target_rank, target_disp, target_count, target_datatype, op, win);
     }
     r_ = edumpi_rec_begin("MPI_Get_accumulate", &fid_, edumpi_wid(win), EDUMPI_F_BLOCKING|EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Get_accumulate(origin_addr, origin_count, origin_datatype, result_addr, result_count, result_datatype, target_rank, target_disp, target_count, target_datatype, op, win);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(origin_count,origin_datatype);
@@ -1362,7 +1654,9 @@ int MPI_Fetch_and_op(const void *origin_addr, void *result_addr, MPI_Datatype da
         return PMPI_Fetch_and_op(origin_addr, result_addr, datatype, target_rank, target_disp, op, win);
     }
     r_ = edumpi_rec_begin("MPI_Fetch_and_op", &fid_, edumpi_wid(win), EDUMPI_F_BLOCKING|EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Fetch_and_op(origin_addr, result_addr, datatype, target_rank, target_disp, op, win);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(1,datatype);
@@ -1382,7 +1676,9 @@ int MPI_Compare_and_swap(const void *origin_addr, const void *compare_addr, void
         return PMPI_Compare_and_swap(origin_addr, compare_addr, result_addr, datatype, target_rank, target_disp, win);
     }
     r_ = edumpi_rec_begin("MPI_Compare_and_swap", &fid_, edumpi_wid(win), EDUMPI_F_BLOCKING|EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Compare_and_swap(origin_addr, compare_addr, result_addr, datatype, target_rank, target_disp, win);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(1,datatype);
@@ -1402,7 +1698,9 @@ int MPI_Rput(const void *origin_addr, int origin_count, MPI_Datatype origin_data
         return PMPI_Rput(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win, request);
     }
     r_ = edumpi_rec_begin("MPI_Rput", &fid_, edumpi_wid(win), EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Rput(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(origin_count,origin_datatype);
@@ -1425,7 +1723,9 @@ int MPI_Rget(void *origin_addr, int origin_count, MPI_Datatype origin_datatype, 
         return PMPI_Rget(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win, request);
     }
     r_ = edumpi_rec_begin("MPI_Rget", &fid_, edumpi_wid(win), EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Rget(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, win, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->recv_bytes = EB(origin_count,origin_datatype);
@@ -1448,7 +1748,9 @@ int MPI_Raccumulate(const void *origin_addr, int origin_count, MPI_Datatype orig
         return PMPI_Raccumulate(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, op, win, request);
     }
     r_ = edumpi_rec_begin("MPI_Raccumulate", &fid_, edumpi_wid(win), EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Raccumulate(origin_addr, origin_count, origin_datatype, target_rank, target_disp, target_count, target_datatype, op, win, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(origin_count,origin_datatype);
@@ -1471,7 +1773,9 @@ int MPI_Rget_accumulate(const void *origin_addr, int origin_count, MPI_Datatype 
         return PMPI_Rget_accumulate(origin_addr, origin_count, origin_datatype, result_addr, result_count, result_datatype, target_rank, target_disp, target_count, target_datatype, op, win, request);
     }
     r_ = edumpi_rec_begin("MPI_Rget_accumulate", &fid_, edumpi_wid(win), EDUMPI_F_ONESIDED);
+    edumpi_tls_cur = r_;
     rc_ = PMPI_Rget_accumulate(origin_addr, origin_count, origin_datatype, result_addr, result_count, result_datatype, target_rank, target_disp, target_count, target_datatype, op, win, request);
+    edumpi_tls_cur = NULL;
     if (r_) {
         r_->end_ns = edumpi_now_ns();
         r_->send_bytes = EB(origin_count,origin_datatype);

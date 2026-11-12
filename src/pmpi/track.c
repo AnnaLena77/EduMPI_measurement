@@ -13,6 +13,9 @@
 #include "wrap.h"
 
 int edumpi_enabled;
+int edumpi_mpit_active;
+_Thread_local edumpi_rec_t *edumpi_tls_cur;
+_Thread_local int edumpi_tls_op = -1;
 
 /* ---------- datatype sizes ---------- */
 int64_t edumpi_tsize(MPI_Datatype dt)
@@ -307,6 +310,40 @@ static reqent_t *req_slot(uintptr_t key, int create)
     return create && first_del < REQ_SLOTS ? &reqs[first_del] : NULL;
 }
 
+/* completion events that arrived before the call that started the request had returned */
+typedef struct { uintptr_t token; uint64_t when; int partner, is_recv; int64_t bytes; } stash_t;
+static stash_t stash[256];
+static unsigned stash_next;
+
+static void apply_fill(edumpi_rec_t *r, uint64_t when, int partner, int64_t bytes, int is_recv)
+{
+    if (!(r->flags & EDUMPI_F_EVENT_DONE)) {
+        r->done_ns = when;
+        r->flags |= EDUMPI_F_HAS_DONE | EDUMPI_F_EVENT_DONE;
+        if (is_recv) {
+            r->partner = partner;
+            r->recv_bytes = bytes;
+        }
+    }
+}
+
+int edumpi_req_fill(uintptr_t token, uint64_t when_ns, int partner, int64_t bytes, int is_recv)
+{
+    reqent_t *e;
+    int applied = 0;
+    pthread_mutex_lock(&req_lock);
+    e = req_slot(token, 0);
+    if (e && e->rec) {
+        apply_fill(e->rec, when_ns, partner, bytes, is_recv);
+        applied = 1;
+    } else {
+        stash_t *s = &stash[stash_next++ % 256];
+        s->token = token; s->when = when_ns; s->partner = partner; s->bytes = bytes; s->is_recv = is_recv;
+    }
+    pthread_mutex_unlock(&req_lock);
+    return applied;
+}
+
 void edumpi_req_add(MPI_Request req, edumpi_rec_t *rec, MPI_Comm comm, int kind)
 {
     reqent_t *e;
@@ -322,6 +359,12 @@ void edumpi_req_add(MPI_Request req, edumpi_rec_t *rec, MPI_Comm comm, int kind)
         e->comm = comm;
         e->kind = kind;
         rec->request_token = (uintptr_t) req;
+        for (unsigned i = 0; i < 256; ++i) {      /* an event for this request came first */
+            if (stash[i].token == (uintptr_t) req) {
+                apply_fill(rec, stash[i].when, stash[i].partner, stash[i].bytes, stash[i].is_recv);
+                stash[i].token = 0;
+            }
+        }
     }
     pthread_mutex_unlock(&req_lock);
     if (!e) {   /* table full: finish the record now, without completion data */
@@ -371,10 +414,13 @@ static void req_drop(uintptr_t key)
 static void req_complete(const reqent_t *e, const MPI_Status *st, uint64_t when)
 {
     edumpi_rec_t *r = e->rec;
-    r->done_ns = when;
-    r->flags |= EDUMPI_F_HAS_DONE;
+    int from_event = (r->flags & EDUMPI_F_EVENT_DONE) != 0;
+    if (!from_event) {
+        r->done_ns = when;
+        r->flags |= EDUMPI_F_HAS_DONE;
+    }
     r->request_token = 0;
-    if (EDUMPI_REQ_RECV == e->kind && st) {
+    if (!from_event && EDUMPI_REQ_RECV == e->kind && st) {
         int n = 0;
         if (MPI_ANY_SOURCE == r->partner || r->flags & EDUMPI_F_ANY_SOURCE) {
             r->flags |= EDUMPI_F_ANY_SOURCE;

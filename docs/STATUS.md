@@ -8,7 +8,7 @@ and the full plan are in `EDUMPI_T_DEVELOPMENT_PLAN.md` (kept next to this repos
 | Part | State |
 |---|---|
 | Open MPI fork `FuldaHPC/code-ompi_edumpi_t` (base: upstream `main`, 6.1.0a1, commit `89b41f785f`) | builds (release and debug); WP-A on branch `mpit/pml-common-events` and WP-B on branch `mpit/coll-events` (stacked on WP-A), both implemented, pushed to the fork and tested |
-| This tool (`EduMPI_measurement`) | milestones G1 (store, monitor thread, file sink) and G2 (70 PMPI wrappers, request tracking) done; G3 onwards open |
+| This tool (`EduMPI_measurement`) | milestones G1 (store, file sink), G2 (70 PMPI wrappers), G3 (MPI_T backend: completion, internal sums, bitmaps, algorithms) done; G4 onwards open |
 | Upstream pull requests | none (decision: prototype first) |
 
 ## 2. Test environment
@@ -66,7 +66,7 @@ the existing activate/complete events and the inline-send path) and `pml/ucx`.
 
 Known limits (also in the plan): under `pml ucx` a non-blocking send raises `send_start` but no
 `send_complete` (the UCX completion callback knows neither communicator nor peer; WP-U);
-`mrecv`/`imrecv` report `MPI_ANY_TAG`; persistent UCX requests are not instrumented; a UCX
+`mrecv`/`imrecv` report `MPI_ANY_TAG`; a UCX
 receive that matches immediately raises `recv_complete` before `recv_start` (pair by token).
 
 ### 3.5 WP-B: collective algorithm event (branch `mpit/coll-events`)
@@ -165,6 +165,39 @@ byte counts are computed from the arguments, not from the library's internal mes
 algorithm, no peer bitmap, no late sender/receiver; neighbour collectives count one neighbour;
 persistent requests (`*_init`, `Start`) and the `_c` large-count variants are not wrapped;
 `MPI_Wait*`/`Test*` of persistent or generalized requests are not tracked.
+
+### 3.8 Tool milestone G3: MPI_T backend
+
+`src/mpit/mpit.c`: before `PMPI_Init` the tool calls `MPI_T_init_thread`, looks up the events by
+name (`ompi.pml_send_start`, `_recv_start`, `_send_complete`, `_recv_complete`,
+`ompi.coll_algorithm_selected`, `ompi.mpi.communicator_created/_freed`), checks their element
+counts and byte offsets, and registers the five communicator-bound events on `MPI_COMM_WORLD`,
+`MPI_COMM_SELF` and, from the `communicator_created` callback, on every new communicator (this
+includes the helper communicators HAN creates). A missing event (stock Open MPI) switches the
+tool to PMPI only (`EDUMPI_MPIT=0` does the same by hand). Callbacks make no MPI calls and read
+the payload with `MPI_T_event_copy`. The clock of the event source is mapped to `CLOCK_REALTIME`
+once at start (best of 7 back-to-back samples); drift is not corrected yet.
+
+What the events add to the records (flags `MPIT_SUM`, `EVENT_DONE`, field `coll_alg`):
+
+| Data | Source | Replaces |
+|---|---|---|
+| arrival time, real sender and received bytes of `Irecv`/`Recv` | `pml_recv_complete` of a user message, found through the request token (= the `MPI_Request` handle; an event that arrives before the call returned is stashed and applied when the request is entered) | time of the wait or test |
+| collective `send_bytes`/`recv_bytes` | sum of the library's internal messages (negative tag) seen by this thread during the blocking call | bytes computed from the arguments |
+| collective partner bitmap | world ranks from `pml_send_start` with a negative tag | not available |
+| collective algorithm (`coll_alg[0..2]`: user, inter-node, intra-node communicator) | `coll_algorithm_selected`, level 0/1/2 | not available |
+
+| Test (jobs 10404, 10408; `tests/test_calls.c`, 4 ranks over 2 nodes; checker with `EXPECT_MPIT=1`) | Result |
+|---|---|
+| `pml ob1`, `pml ucx`, `pml ob1 --mca coll ^han`: Irecv and Recv completion from the event with sender and bytes; Allreduce and Alltoallv have internal byte sums and non-empty partner bitmaps; every collective has an algorithm (HAN: `3.0`, inter-node `2.3`/`4.1`, intra-node `2.3`/`2.5`; without HAN `2.x`) | PASS |
+| `EDUMPI_MPIT=0` (PMPI only) | PASS (records as in G2) |
+
+Bugs found on the way: `communicator_created` carries the context id first and the handle second
+(the first version read the wrong element and registered bogus handles: 4 of 19 communicators
+instead of all); the UCX persistent requests were the last PML path without the common events
+(closed in the fork, branch `mpit/pml-common-events`, test extended). Not done: non-blocking
+collectives get their algorithm only if the event is raised inside the call (libnbc does), no
+byte sums (the schedule runs later); late sender/receiver (G4); PostgreSQL sink (G1b).
 
 ### 3.4 Not done yet
 

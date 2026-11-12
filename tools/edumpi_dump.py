@@ -5,7 +5,7 @@ import struct
 import sys
 
 REC = struct.Struct('<QQQqqiHHIIIII3IQQQIIQQ')   # 128 bytes, see record.h
-FLAGS = ['BLOCKING', 'COLLECTIVE', 'ONESIDED', 'HAS_DONE', 'ANY_SOURCE', 'NOT_COMPLETED', 'NO_END']
+FLAGS = ['BLOCKING', 'COLLECTIVE', 'ONESIDED', 'HAS_DONE', 'ANY_SOURCE', 'NOT_COMPLETED', 'NO_END', 'MPIT_SUM', 'EVENT_DONE']
 
 
 def read_file(path):
