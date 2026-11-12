@@ -4,8 +4,31 @@ The measurement library of EduMPI Suite as an independent tool: it records MPI c
 through the standard interfaces PMPI and MPI_T (performance variables and events) instead of
 a modified MPI library, and streams the records to EduStore (TimescaleDB) in near-real-time.
 
-**Status: preparation phase.** The measurement tool itself is not written yet; what exists and was tested is in `docs/STATUS.md`. `tests/` holds the MPI_T probe, `cluster/` the Slurm job scripts for the Open MPI fork. The design and the work packages are in
-`EDUMPI_T_DEVELOPMENT_PLAN.md` (sections 9, 16 "WP-G" and 17), kept next to this repository.
+**Status: working prototype.** The tool records MPI calls through PMPI and, where the library offers
+them, MPI_T events, and writes either to EduStore (PostgreSQL binary `COPY`, same table and columns as
+before) or to a per-rank binary file. What is built and how it was tested is in `docs/STATUS.md`; the
+design and plan are in `EDUMPI_T_DEVELOPMENT_PLAN.md`, kept next to this repository.
+
+## Use
+
+```bash
+make CC=mpicc                                   # libedumpi.so        (file sink)
+make CC=mpicc PG=1 PQINC=<libpq include> PQLIB=<libpq lib>   # with the PostgreSQL sink
+LD_PRELOAD=$PWD/libedumpi.so EDUMPI_LOG_DIR=/path mpirun -n 4 ./your_mpi_program
+```
+
+| Variable | Meaning |
+|---|---|
+| `EDUMPI_SINK` | `file`, `pg` or `both`; default `pg` if `DB_HOST` is set, else `file` |
+| `EDUMPI_LOG_DIR` | directory of the per-rank files `edumpi.<rank>.bin` (`tools/edumpi_dump.py` prints them) |
+| `DB_HOST DB_PORT DB_USER DB_NAME DB_PW`, `SLURM_JOBID`, `EDUMPI_PROGRAM` | as in EduMPI |
+| `EDUMPI_MPIT=0` | PMPI only (also the behaviour on a library without the events) |
+| `EDUMPI_FLUSH_MS` | flush interval of the monitor thread, default 500 |
+| `EDUMPI_DISABLE=1` | do nothing |
+
+The MPI_T data (collective algorithms and internal message sums, real completion times, late sender
+and receiver) needs the Open MPI branches `mpit/pml-common-events` and `mpit/coll-events` of
+`FuldaHPC/code-ompi_edumpi_t`; late sender/receiver needs `--mca pml ob1`.
 
 ## Related repositories
 
