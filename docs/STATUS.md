@@ -97,11 +97,31 @@ Bugs found while testing: HAN events were first bound to the helper communicator
 can register; they are now delivered to the user communicator. The test first matched the
 internal allreduce of communicator creation; it now matches by message size.
 
+Other components (commit after `bc44b7a1b5` on the same branch): `basic` (thin wrappers around
+the linear base algorithms; ids 1 linear, 2 logarithmic, 3 inter-communicator), `adapt`
+(`ibcast`/`ireduce`, tree type as id, with request), `xhc`, `acoll`, `ucc` (id 1: the algorithm
+choice happens inside the component). `coll/sm` does not exist in this Open MPI version.
+
+| Test (job 10385/10392, `cluster/test_coll_events.sbatch`) | Result |
+|---|---|
+| `coll basic,libnbc,self`: bcast/allreduce/barrier events from component `basic` | PASS |
+| `coll_adapt_priority 100`: bcast event from component `adapt` | PASS |
+| `coll_xhc_priority 100` (one node, 2 ranks): events from `xhc` | PASS |
+| `coll_acoll_priority 100 --mca coll_acoll_comm_size_thresh 2` (acoll is off below 16 ranks): events from `acoll` | PASS |
+| `ucc`: no UCC runtime here, so only a syntax check of all `coll/ucc` sources against the UCC 1.7.0 headers (`cluster/ucc_syntax.sbatch`, job 10390) | no errors or warnings; **never run** |
+
+Regression after WP-A and WP-B (dev debug build): `ompi/test/t` 24 PASS, 1 SKIP (the new
+2-rank collective test in its singleton run); `test/util` 33/33 PASS (job 10393).
+`mpi_t_stress` (10000 MPI_T init/finalize cycles) is very slow under `make check` on the BeeGFS
+build tree (state D, waiting for I/O; one run was cancelled after 30 min) but passes when run
+directly (2 min 15 s, job 10383); the per-cycle cost is the same as for unmodified upstream
+(13.8 vs 13.2 ms per cycle, job 10382, `tests/mpit_cycles.c`). A build tree on node-local disk
+would avoid this; it was not repeated.
+
 Known limits: `libnbc` reports only four operations and, for persistent collectives, at
 initialisation instead of every start; `han` ids are 0 (default task based) and 255 (default
-simple) when no algorithm table entry is selected; `basic`, `adapt`, `xhc`, `acoll`, `ucc`, `sm`
-are not instrumented; the new test is not part of `make check` runs with one process (it skips).
-The whole-tree `make check` was not repeated after WP-B.
+simple) when no algorithm table entry is selected; `xhc`, `acoll`, `ucc` report no sub-algorithm;
+`ucc` non-blocking operations and `adapt`/`libnbc` persistent variants are not covered.
 
 ### 3.4 Not done yet
 
