@@ -398,6 +398,12 @@ static void apply_fill(edumpi_rec_t *r, uint64_t when, int partner, int64_t byte
     }
 }
 
+edumpi_rec_t *edumpi_req_rec(uintptr_t token)
+{
+    reqent_t *e = req_find(token);
+    return (e && EDUMPI_REQ_COLL == e->kind) ? e->rec : NULL;
+}
+
 int edumpi_req_fill(uintptr_t token, uint64_t when_ns, int partner, int64_t bytes, int is_recv)
 {
     reqent_t *e = req_find(token);
@@ -505,9 +511,16 @@ int MPI_Wait(MPI_Request *request, MPI_Status *status)
         return PMPI_Wait(request, status);
     }
     w = edumpi_rec_begin("MPI_Wait", &fid, EDUMPI_NO_COMM, EDUMPI_F_BLOCKING);
-    have = request && req_take(*request, &e);
+    {   /* copy the entry but leave it in the table: events of the request still arrive while PMPI_Wait progresses it */
+        reqent_t *p = (request && MPI_REQUEST_NULL != *request) ? req_find((uintptr_t) *request) : NULL;
+        if (p) {
+            e.key = (uintptr_t) *request; e.rec = p->rec; e.comm = p->comm; e.kind = p->kind;
+            have = 1;
+        }
+    }
     rc = PMPI_Wait(request, (status == MPI_STATUS_IGNORE && have) ? &local : status);
     if (have) {
+        req_drop(e.key);
         req_complete(&e, status == MPI_STATUS_IGNORE ? &local : status, edumpi_now_ns());
     }
     if (w) {

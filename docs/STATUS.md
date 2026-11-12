@@ -286,14 +286,13 @@ Review of 2026-11-12 against the WG slides (details and the planned work: sectio
 | WG idea | State |
 |---|---|
 | Set to track handles: created / freeing events, registration inside the handler | communicators: used and tested (event handles are allocated in the `communicator_created` callback). **Requests: not built** (`REQUEST_CREATED` / `REQUEST_FREEING`, request-bound PVARs = WP-C) |
-| Set for request states: activated, completed, cancelled, freed | activated and completed for PML requests of ob1 and ucx (`ompi.pml_*_start` / `_complete`); cancelled and freed only as ob1 events; **nothing for collective requests** |
-| TRANSFER set and tracking the p2p messages of a collective | blocking collectives: byte sums and partner bitmap from internal messages. **Non-blocking collectives: only the algorithm**; byte counts still come from the arguments and there is no partner bitmap, because the `parent` element of the start events is not filled yet (planned as WP-B2) |
+| Set for request states: activated, completed, cancelled, freed | activated and completed for PML requests of ob1 and ucx (`ompi.pml_*_start` / `_complete`); cancelled and freed only as ob1 events; collective requests of libnbc now have activated/completed events (generic REQUEST set, WP-B2) |
+| TRANSFER set and tracking the p2p messages of a collective | blocking collectives: byte sums and partner bitmap from internal messages. Non-blocking collectives: byte sums, partner bitmap and completion time from the `parent` token and the REQUEST set (WP-B2, section 3.13) |
 | Request lifetime problem (binding to a short-lived request) | avoided for point-to-point requests by correlating events through the request token, including a request that completes before the call returns. The test loop that would prove it (10^6 one-byte operations) is not written |
 | Dummy requests, token rules | observed (token 0 for operations without an own request, tokens are reused) but only described in the plan |
 | Semantic set names | Open MPI names are hard-coded in the tool; no name table |
 
-So the statement "the database row is reproducible from events" holds for blocking calls and for
-non-blocking point-to-point calls, **not yet for non-blocking collectives**.
+The database row is now reproducible from events for blocking calls, non-blocking point-to-point calls and non-blocking collectives of libnbc (section 3.13); `coll/adapt` and persistent collectives are open.
 
 ### 3.11a Overhead, second round: one core more per rank, MPI_T thread level
 
@@ -328,6 +327,30 @@ per call, each raising the event). Not yet remeasured with the two corrections.
 
 Both corrections changed no results: the correctness tests were repeated on the optimized build (job 10430,
 all PASS).
+
+### 3.13 Non-blocking collectives (WP-B2) and the entity sets
+
+Done with the structure of the plan (section 7 and 20): the Open MPI names are reached through a **name table**
+of semantic set names (`src/mpit/names_ompi.h`: `P2P_SEND_START`, `P2P_RECV_COMPLETE`, `COLL_ALGORITHM_SELECTED`,
+`MATCH_POSTED`, `TRANSFER_STEP`, `REQUEST_COMPLETED`, ...; `EDUMPI_DEBUG=1` prints it with "found / not available"
+per event). Library side (fork, branch `mpit/coll-nbc-events`): the generic **REQUEST set** with a `kind` element
+(`ompi.mpi.request_activated` / `ompi.mpi.request_completed`, kind collective for libnbc requests) and the **parent**
+token in the `pml_send_start` / `pml_recv_start` events (the collective request on whose behalf a message is sent).
+
+| Test | Result |
+|---|---|
+| fork test `mpi_t_event_request_state` (2 nodes x 2 ranks): one activated and one completed event of kind collective, same token as the `MPI_Request` handle, completed after activated, every internal send names the request as parent | PASS on `pml ob1` and `pml ucx` (job 10436) |
+| `tests/test_nbc.c` + `check_nbc.py`: an `Iallreduce` alone and the same `Iallreduce` overlapped with a second `Iallreduce`, a blocking `Allreduce` of the same size and a `Sendrecv` ring must have identical byte sums and partner bitmaps; total bytes sent = total received; completion time from the request event | PASS on ob1 and ucx (job 10434) |
+| all earlier tool tests | PASS |
+
+Bug found by this test (tool, not library): `MPI_Wait` removed the request from the table before calling
+`PMPI_Wait`, so everything that happens during the wait (later schedule rounds, the completion event) lost its
+record. Entries are now removed after the wait.
+
+Now covered: byte sums, partner bitmaps and completion time of non-blocking collectives; non-blocking collectives
+are at parity with blocking ones for the MPI_T data. Not covered: persistent collectives (`MPI_*_init`, `MPI_Start`
+are not wrapped), `coll/adapt` non-blocking operations (no parent token there), kinds other than collective in the
+REQUEST set, REQUEST_CREATED / REQUEST_FREEING and request-bound PVARs (WP-C).
 
 ### 3.4 Not done yet
 

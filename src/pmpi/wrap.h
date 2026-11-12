@@ -28,6 +28,8 @@ void edumpi_mpit_init(void);                     /* before PMPI_Init */
 void edumpi_mpit_after_init(void);               /* after PMPI_Init: register on MPI_COMM_WORLD / SELF */
 void edumpi_mpit_finalize(void);                 /* before PMPI_Finalize */
 /* completion data from an event; token = MPI_Request handle. Returns 1 if applied, 0 if stashed for later. */
+/* record of an open non-blocking collective request (token = MPI_Request handle), NULL if none */
+edumpi_rec_t *edumpi_req_rec(uintptr_t token);
 int edumpi_req_fill(uintptr_t token, uint64_t when_ns, int partner, int64_t bytes, int is_recv);
 
 /* request tracking: a non-blocking call leaves its record open until the request completes */

@@ -25,13 +25,7 @@
 
 #include "../pmpi/wrap.h"
 
-enum { EV_SEND_START, EV_RECV_START, EV_SEND_COMPLETE, EV_RECV_COMPLETE, EV_ALGORITHM,
-       EV_ACTIVATE, EV_MATCH, EV_TRANSFER,      /* ob1 only, optional: late sender / late receiver */
-       EV_N };
-static const char *ev_names[EV_N] = {"ompi.pml_send_start", "ompi.pml_recv_start", "ompi.pml_send_complete",
-                                     "ompi.pml_recv_complete", "ompi.coll_algorithm_selected",
-                                     "ompi.pml_ob1_request_activate", "ompi.pml_ob1_posted_match",
-                                     "ompi.pml_ob1_transfer"};
+#include "names_ompi.h"
 
 typedef struct {
     int index;
@@ -109,6 +103,91 @@ static inline uint64_t u64at(const unsigned char *b, int off) { uint64_t v; memc
 static inline int64_t i64at(const unsigned char *b, int off) { int64_t v; memcpy(&v, b + off, 8); return v; }
 static inline int32_t i32at(const unsigned char *b, int off) { int32_t v; memcpy(&v, b + off, 4); return v; }
 
+
+/* ---- attribution of internal messages to collective records ----
+ * A message with a parent token belongs to the non-blocking collective request with that token; one without belongs
+ * to the blocking collective the calling thread is in. Records of non-blocking collectives can be written from the
+ * thread that progresses the request, so these updates are serialised. */
+static pthread_mutex_t coll_lock = PTHREAD_MUTEX_INITIALIZER;
+
+typedef struct { uint64_t token; uint64_t parent; } rparent_t;     /* internal receive -> collective request */
+#define RP_SLOTS 1024
+static rparent_t rparents[RP_SLOTS];
+
+static void rp_put(uint64_t token, uint64_t parent)
+{
+    size_t h = (token >> 4) % RP_SLOTS;
+    for (size_t i = 0; i < RP_SLOTS; ++i) {
+        rparent_t *e = &rparents[(h + i) % RP_SLOTS];
+        if (0 == e->token || 1 == e->token || token == e->token) {
+            e->token = token;
+            e->parent = parent;
+            return;
+        }
+    }
+}
+
+static uint64_t rp_take(uint64_t token)
+{
+    size_t h = (token >> 4) % RP_SLOTS;
+    for (size_t i = 0; i < RP_SLOTS; ++i) {
+        rparent_t *e = &rparents[(h + i) % RP_SLOTS];
+        if (token == e->token) {
+            e->token = 1;
+            return e->parent;
+        }
+        if (0 == e->token) {
+            break;
+        }
+    }
+    return 0;
+}
+
+/* the record a message of this parent belongs to: the request's, else the current call's if it is a collective */
+static edumpi_rec_t *coll_target(uint64_t parent, edumpi_rec_t *cur)
+{
+    edumpi_rec_t *r = parent ? edumpi_req_rec((uintptr_t) parent) : NULL;
+    if (!r && cur && (cur->flags & EDUMPI_F_COLLECTIVE)) {
+        r = cur;
+    }
+    return r;
+}
+
+static void sums_start(edumpi_rec_t *r)
+{
+    if (!(r->flags & EDUMPI_F_MPIT_SUM)) {     /* first internal message: drop the byte counts computed from the arguments */
+        r->send_bytes = 0;
+        r->recv_bytes = 0;
+        r->flags |= EDUMPI_F_MPIT_SUM;
+    }
+}
+
+static void coll_add_send(edumpi_rec_t *r, int64_t len, int pw)
+{
+    sums_start(r);
+    r->send_bytes += len;
+    if (pw >= 0) {
+        unsigned words = (unsigned) (pw / 64) + 1;
+        if (r->partner_bits_words < words) {
+            uint64_t *nb = realloc(r->partner_bits, words * 8);
+            if (nb) {
+                memset(nb + r->partner_bits_words, 0, (words - r->partner_bits_words) * 8);
+                r->partner_bits = nb;
+                r->partner_bits_words = words;
+            }
+        }
+        if (r->partner_bits_words >= words) {
+            r->partner_bits[pw / 64] |= 1ull << (pw % 64);
+        }
+    }
+}
+
+static void coll_add_recv(edumpi_rec_t *r, int64_t len)
+{
+    sums_start(r);
+    r->recv_bytes += len;
+}
+
 static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_T_cb_safety safety, void *user)
 {
     int kind = (int) (intptr_t) user;
@@ -126,24 +205,30 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
     if (EV_SEND_START == kind || EV_RECV_START == kind) {
         /* request, parent, length, peer, peer_world, tag, flags */
         int tag = i32at(b, e->disp[5]);
-        if (EV_SEND_START == kind && tag < 0 && cur && (cur->flags & EDUMPI_F_COLLECTIVE)) {
+        uint64_t parent = u64at(b, e->disp[1]);
+        if (tag >= 0) {
+            return;
+        }
+        if (EV_RECV_START == kind) {
+            if (parent) {                              /* completion comes later and carries no parent */
+                pthread_mutex_lock(&coll_lock);
+                rp_put(u64at(b, e->disp[0]), parent);
+                pthread_mutex_unlock(&coll_lock);
+            }
+            return;
+        }
+        {
+            edumpi_rec_t *r;
             int pw = i32at(b, e->disp[4]);
             __sync_fetch_and_add(&n_internal_send, 1);
-            cur->send_bytes += i64at(b, e->disp[2]);
-            cur->flags |= EDUMPI_F_MPIT_SUM;
-            if (pw >= 0) {
-                unsigned words = (unsigned) (pw / 64) + 1;
-                if (cur->partner_bits_words < words) {
-                    uint64_t *nb = realloc(cur->partner_bits, words * 8);
-                    if (nb) {
-                        memset(nb + cur->partner_bits_words, 0, (words - cur->partner_bits_words) * 8);
-                        cur->partner_bits = nb;
-                        cur->partner_bits_words = words;
-                    }
+            if (parent) {
+                pthread_mutex_lock(&coll_lock);
+                if ((r = coll_target(parent, cur)) != NULL) {
+                    coll_add_send(r, i64at(b, e->disp[2]), pw);
                 }
-                if (cur->partner_bits_words >= words) {
-                    cur->partner_bits[pw / 64] |= 1ull << (pw % 64);
-                }
+                pthread_mutex_unlock(&coll_lock);
+            } else if (cur && (cur->flags & EDUMPI_F_COLLECTIVE)) {
+                coll_add_send(cur, i64at(b, e->disp[2]), pw);
             }
         }
         return;
@@ -157,10 +242,24 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
         int is_recv = (EV_RECV_COMPLETE == kind);
 
         if (tag < 0) {                                    /* internal message of a collective */
-            if (is_recv && cur && (cur->flags & EDUMPI_F_COLLECTIVE)) {
-                __sync_fetch_and_add(&n_internal_recv, 1);
-                cur->recv_bytes += len;
-                cur->flags |= EDUMPI_F_MPIT_SUM;
+            if (is_recv) {
+                uint64_t parent = 0;
+                edumpi_rec_t *r = NULL;
+                pthread_mutex_lock(&coll_lock);
+                if (token) {
+                    parent = rp_take(token);
+                }
+                if (parent && (r = coll_target(parent, cur)) != NULL) {
+                    __sync_fetch_and_add(&n_internal_recv, 1);
+                    coll_add_recv(r, len);
+                    r = NULL;
+                    parent = 1;
+                }
+                pthread_mutex_unlock(&coll_lock);
+                if (1 != parent && cur && (cur->flags & EDUMPI_F_COLLECTIVE)) {
+                    __sync_fetch_and_add(&n_internal_recv, 1);
+                    coll_add_recv(cur, len);
+                }
             }
             return;
         }
@@ -219,6 +318,25 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
             }
         }
         pthread_mutex_unlock(&act_lock);
+        return;
+    }
+    if (EV_REQ_COMPLETED == kind) {
+        /* set REQUEST: request, comm, kind, flags. Only collective requests are of interest here: the point-to-point
+           requests report their completion with the envelope events. */
+        uint64_t token = u64at(b, e->disp[0]);
+        int rkind = i32at(b, e->disp[2]);
+        edumpi_rec_t *r;
+        if (REQ_KIND_COLL != rkind) {
+            return;
+        }
+        MPI_T_event_get_timestamp(inst, &ts);
+        pthread_mutex_lock(&coll_lock);
+        r = coll_target(token, cur);
+        if (r && !(r->flags & EDUMPI_F_EVENT_DONE) && !(r->flags & EDUMPI_F_BLOCKING)) {
+            r->done_ns = (uint64_t) ((int64_t) ts + clock_offset_ns);
+            r->flags |= EDUMPI_F_HAS_DONE | EDUMPI_F_EVENT_DONE;
+        }
+        pthread_mutex_unlock(&coll_lock);
         return;
     }
     if (EV_ALGORITHM == kind) {
@@ -432,7 +550,6 @@ static size_t algorithm_text(const edumpi_rec_t *r, char *buf, size_t n)
     return (size_t) snprintf(buf, n, "%s", a);
 }
 
-static const int need_elems[EV_N] = {7, 7, 6, 6, 9, 1, 1, 2};
 
 void edumpi_mpit_init(void)
 {
@@ -444,7 +561,7 @@ void edumpi_mpit_init(void)
     if (off && '0' == off[0]) {
         return;
     }
-    ev_mask = ~(1u << EV_RECV_START);          /* recv_start carries nothing the tool uses */
+    ev_mask = ~0u;
     if (getenv("EDUMPI_EVENT_MASK")) {
         ev_mask = (unsigned) strtoul(getenv("EDUMPI_EVENT_MASK"), NULL, 0);
     }
@@ -460,9 +577,9 @@ void edumpi_mpit_init(void)
     t_initialized = 1;
     for (int k = 0; k < EV_N; ++k) {
         ev[k].index = -1;
-        if (0 != lookup(ev_names[k], &ev[k]) || ev[k].nel != need_elems[k]) {
+        if (0 != lookup(ev_table[k].impl, &ev[k]) || ev[k].nel != ev_table[k].elements) {
             ev[k].index = -1;
-            if (k == EV_RECV_COMPLETE || k == EV_SEND_START) {
+            if (ev_table[k].required) {
                 ok = 0;
             }
         }
@@ -473,6 +590,12 @@ void edumpi_mpit_init(void)
     if (0 == lookup("ompi.mpi.communicator_created", &a) && 0 == lookup("ompi.mpi.communicator_freed", &b)) {
         created_idx = a.index;
         freed_idx = b.index;
+    }
+    if (getenv("EDUMPI_DEBUG")) {
+        for (int k = 0; k < EV_N; ++k) {
+            fprintf(stderr, "edumpi mpit: %-24s -> %-32s %s\n", ev_table[k].semantic, ev_table[k].impl,
+                    ev[k].index >= 0 ? "found" : "not available");
+        }
     }
     calibrate(ev[EV_RECV_COMPLETE].src);
     if (created_idx >= 0
