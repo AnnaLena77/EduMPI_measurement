@@ -1125,6 +1125,9 @@ int MPI_Ibarrier(MPI_Comm comm, MPI_Request *request)
     if (!edumpi_enabled) {
         return PMPI_Ibarrier(comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Ibarrier", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 6;
@@ -1152,6 +1155,9 @@ int MPI_Ibcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Com
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Ibcast(buffer, count, datatype, root, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Ibcast", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1185,6 +1191,9 @@ int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, vo
     if (!edumpi_enabled) {
         return PMPI_Iallgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Iallgather", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 0;
@@ -1216,6 +1225,9 @@ int MPI_Iallgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, v
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Iallgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Iallgatherv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1249,6 +1261,9 @@ int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype d
     if (!edumpi_enabled) {
         return PMPI_Iallreduce(sendbuf, recvbuf, count, datatype, op, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Iallreduce", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 2;
@@ -1280,6 +1295,9 @@ int MPI_Ialltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype, voi
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Ialltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Ialltoall", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1313,6 +1331,9 @@ int MPI_Ialltoallv(const void *sendbuf, const int sendcounts[], const int sdispl
     if (!edumpi_enabled) {
         return PMPI_Ialltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Ialltoallv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 4;
@@ -1344,6 +1365,9 @@ int MPI_Ialltoallw(const void *sendbuf, const int sendcounts[], const int sdispl
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Ialltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Ialltoallw", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1377,6 +1401,9 @@ int MPI_Iexscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype data
     if (!edumpi_enabled) {
         return PMPI_Iexscan(sendbuf, recvbuf, count, datatype, op, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Iexscan", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 8;
@@ -1408,6 +1435,9 @@ int MPI_Iscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype dataty
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Iscan(sendbuf, recvbuf, count, datatype, op, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Iscan", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1441,6 +1471,9 @@ int MPI_Igather(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void 
     if (!edumpi_enabled) {
         return PMPI_Igather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Igather", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 9;
@@ -1472,6 +1505,9 @@ int MPI_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Igatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Igatherv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1505,6 +1541,9 @@ int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype data
     if (!edumpi_enabled) {
         return PMPI_Ireduce(sendbuf, recvbuf, count, datatype, op, root, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Ireduce", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 11;
@@ -1536,6 +1575,9 @@ int MPI_Ireduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Ireduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Ireduce_scatter", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1569,6 +1611,9 @@ int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount,
     if (!edumpi_enabled) {
         return PMPI_Ireduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Ireduce_scatter_block", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 13;
@@ -1600,6 +1645,9 @@ int MPI_Iscatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Iscatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Iscatter", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1633,6 +1681,9 @@ int MPI_Iscatterv(const void *sendbuf, const int sendcounts[], const int displs[
     if (!edumpi_enabled) {
         return PMPI_Iscatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Iscatterv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 16;
@@ -1664,6 +1715,9 @@ int MPI_Ineighbor_allgather(const void *sendbuf, int sendcount, MPI_Datatype sen
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Ineighbor_allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_allgather", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1697,6 +1751,9 @@ int MPI_Ineighbor_allgatherv(const void *sendbuf, int sendcount, MPI_Datatype se
     if (!edumpi_enabled) {
         return PMPI_Ineighbor_allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Ineighbor_allgatherv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 4294967295;
@@ -1727,6 +1784,9 @@ int MPI_Ineighbor_alltoall(const void *sendbuf, int sendcount, MPI_Datatype send
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Ineighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_alltoall", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -1760,6 +1820,9 @@ int MPI_Ineighbor_alltoallv(const void *sendbuf, const int sendcounts[], const i
     if (!edumpi_enabled) {
         return PMPI_Ineighbor_alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Ineighbor_alltoallv", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
         r_->coll_op = 4294967295;
@@ -1787,6 +1850,9 @@ int MPI_Ineighbor_alltoallw(const void *sendbuf, const int sendcounts[], const M
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Ineighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Ineighbor_alltoallw", &fid_, edumpi_cid(comm), EDUMPI_F_COLLECTIVE);
     if (r_) {
@@ -2047,6 +2113,9 @@ int MPI_Barrier_init(MPI_Comm comm, MPI_Info info, MPI_Request *request)
     if (!edumpi_enabled) {
         return PMPI_Barrier_init(comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Barrier_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2072,6 +2141,9 @@ int MPI_Bcast_init(void *buffer, int count, MPI_Datatype datatype, int root, MPI
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Bcast_init(buffer, count, datatype, root, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Bcast_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2101,6 +2173,9 @@ int MPI_Allgather_init(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     if (!edumpi_enabled) {
         return PMPI_Allgather_init(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Allgather_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2128,6 +2203,9 @@ int MPI_Allgatherv_init(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Allgatherv_init(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Allgatherv_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2157,6 +2235,9 @@ int MPI_Allreduce_init(const void *sendbuf, void *recvbuf, int count, MPI_Dataty
     if (!edumpi_enabled) {
         return PMPI_Allreduce_init(sendbuf, recvbuf, count, datatype, op, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Allreduce_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2184,6 +2265,9 @@ int MPI_Alltoall_init(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Alltoall_init(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Alltoall_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2213,6 +2297,9 @@ int MPI_Alltoallv_init(const void *sendbuf, const int sendcounts[], const int sd
     if (!edumpi_enabled) {
         return PMPI_Alltoallv_init(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Alltoallv_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2240,6 +2327,9 @@ int MPI_Alltoallw_init(const void *sendbuf, const int sendcounts[], const int sd
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Alltoallw_init(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Alltoallw_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2269,6 +2359,9 @@ int MPI_Exscan_init(const void *sendbuf, void *recvbuf, int count, MPI_Datatype 
     if (!edumpi_enabled) {
         return PMPI_Exscan_init(sendbuf, recvbuf, count, datatype, op, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Exscan_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2296,6 +2389,9 @@ int MPI_Scan_init(const void *sendbuf, void *recvbuf, int count, MPI_Datatype da
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Scan_init(sendbuf, recvbuf, count, datatype, op, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Scan_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2325,6 +2421,9 @@ int MPI_Gather_init(const void *sendbuf, int sendcount, MPI_Datatype sendtype, v
     if (!edumpi_enabled) {
         return PMPI_Gather_init(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Gather_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2352,6 +2451,9 @@ int MPI_Gatherv_init(const void *sendbuf, int sendcount, MPI_Datatype sendtype, 
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Gatherv_init(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Gatherv_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2381,6 +2483,9 @@ int MPI_Reduce_init(const void *sendbuf, void *recvbuf, int count, MPI_Datatype 
     if (!edumpi_enabled) {
         return PMPI_Reduce_init(sendbuf, recvbuf, count, datatype, op, root, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Reduce_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2408,6 +2513,9 @@ int MPI_Reduce_scatter_init(const void *sendbuf, void *recvbuf, const int recvco
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Reduce_scatter_init(sendbuf, recvbuf, recvcounts, datatype, op, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Reduce_scatter_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2437,6 +2545,9 @@ int MPI_Reduce_scatter_block_init(const void *sendbuf, void *recvbuf, int recvco
     if (!edumpi_enabled) {
         return PMPI_Reduce_scatter_block_init(sendbuf, recvbuf, recvcount, datatype, op, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Reduce_scatter_block_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2464,6 +2575,9 @@ int MPI_Scatter_init(const void *sendbuf, int sendcount, MPI_Datatype sendtype, 
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Scatter_init(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Scatter_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2493,6 +2607,9 @@ int MPI_Scatterv_init(const void *sendbuf, const int sendcounts[], const int dis
     if (!edumpi_enabled) {
         return PMPI_Scatterv_init(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Scatterv_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2520,6 +2637,9 @@ int MPI_Neighbor_allgather_init(const void *sendbuf, int sendcount, MPI_Datatype
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Neighbor_allgather_init(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_allgather_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2549,6 +2669,9 @@ int MPI_Neighbor_allgatherv_init(const void *sendbuf, int sendcount, MPI_Datatyp
     if (!edumpi_enabled) {
         return PMPI_Neighbor_allgatherv_init(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Neighbor_allgatherv_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2575,6 +2698,9 @@ int MPI_Neighbor_alltoall_init(const void *sendbuf, int sendcount, MPI_Datatype 
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Neighbor_alltoall_init(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_alltoall_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
@@ -2604,6 +2730,9 @@ int MPI_Neighbor_alltoallv_init(const void *sendbuf, const int sendcounts[], con
     if (!edumpi_enabled) {
         return PMPI_Neighbor_alltoallv_init(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm, info, request);
     }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
+    }
     r_ = edumpi_rec_begin("MPI_Neighbor_alltoallv_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;
     edumpi_tls_pinit = 1;
@@ -2629,6 +2758,9 @@ int MPI_Neighbor_alltoallw_init(const void *sendbuf, const int sendcounts[], con
     edumpi_rec_t *r_ = NULL;
     if (!edumpi_enabled) {
         return PMPI_Neighbor_alltoallw_init(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm, info, request);
+    }
+    if (!edumpi_mpit_req_on) {
+        edumpi_mpit_need_coll_requests();
     }
     r_ = edumpi_rec_begin("MPI_Neighbor_alltoallw_init", &fid_, edumpi_cid(comm), EDUMPI_F_BLOCKING|EDUMPI_F_COLLECTIVE);
     edumpi_tls_cur = r_;

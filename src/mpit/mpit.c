@@ -36,6 +36,8 @@ typedef struct {
 
 static evinfo_t ev[EV_N];
 static int created_idx = -1, freed_idx = -1;
+int edumpi_mpit_req_on;
+static int cb_nop;                   /* EDUMPI_CB_NOP=1: callbacks return at once (measures the delivery cost of the library alone) */
 static unsigned ev_mask = ~0u;       /* which event types are registered on communicators (EDUMPI_EVENT_MASK, bit = enum value) */
 static int64_t clock_offset_ns;      /* CLOCK_REALTIME - source ticks, ticks are ns */
 static int t_initialized;
@@ -198,6 +200,9 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
     (void) reg;
     (void) safety;
 
+    if (cb_nop) {
+        return;
+    }
     if (MPI_SUCCESS != MPI_T_event_copy(inst, b)) {
         return;
     }
@@ -362,6 +367,23 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
     }
 }
 
+static void reg_one(commreg_t *slot, MPI_Comm *comm, int k)
+{
+    MPI_T_event_registration r;
+    if (slot->n >= EV_N || ev[k].index < 0) {
+        return;
+    }
+    if (MPI_SUCCESS == MPI_T_event_handle_alloc(ev[k].index, comm, MPI_INFO_NULL, &r)) {
+        if (MPI_SUCCESS == MPI_T_event_register_callback(r, MPI_T_CB_REQUIRE_NONE, MPI_INFO_NULL,
+                                                         (void *) (intptr_t) k, cb_pml)) {
+            slot->reg[slot->n++] = r;
+            __sync_fetch_and_add(&n_registered, 1);
+        } else {
+            MPI_T_event_handle_free(r, NULL, NULL);
+        }
+    }
+}
+
 static void register_comm(uint64_t handle)
 {
     MPI_Comm comm = (MPI_Comm) (uintptr_t) handle;
@@ -381,20 +403,35 @@ static void register_comm(uint64_t handle)
         slot->comm = handle;
         slot->n = 0;
         for (int k = 0; k < EV_N; ++k) {
-            MPI_T_event_registration r;
-            if (ev[k].index < 0 || !(ev_mask & (1u << k))) {
-                continue;
+            if (ev_mask & (1u << k)) {
+                reg_one(slot, &comm, k);
             }
-            if (MPI_SUCCESS == MPI_T_event_handle_alloc(ev[k].index, &comm, MPI_INFO_NULL, &r)) {
-                if (MPI_SUCCESS == MPI_T_event_register_callback(r, MPI_T_CB_REQUIRE_NONE, MPI_INFO_NULL,
-                                                                 (void *) (intptr_t) k, cb_pml)) {
-                    slot->reg[slot->n++] = r;
-                    __sync_fetch_and_add(&n_registered, 1);
-                } else {
-                    MPI_T_event_handle_free(r, NULL, NULL);
+        }
+    }
+    pthread_mutex_unlock(&reg_lock);
+}
+
+/* (flag declared at the top)
+   The generic REQUEST_COMPLETED event is raised for every point-to-point request as well and costs 1 to 1.5 microseconds
+   per message, but the tool needs it only for the completion time of non-blocking and persistent collectives. It is
+   therefore registered when the program first calls such a collective (unless EDUMPI_EVENT_MASK says otherwise). */
+void edumpi_mpit_need_coll_requests(void)
+{
+    if (!edumpi_mpit_active || edumpi_mpit_req_on) {
+        return;
+    }
+    pthread_mutex_lock(&reg_lock);
+    if (!edumpi_mpit_req_on) {
+        if (!(ev_mask & (1u << EV_REQ_COMPLETED))) {
+            ev_mask |= 1u << EV_REQ_COMPLETED;
+            for (int i = 0; i < MAXREG; ++i) {
+                if (regs[i].comm) {
+                    MPI_Comm c = (MPI_Comm) (uintptr_t) regs[i].comm;
+                    reg_one(&regs[i], &c, EV_REQ_COMPLETED);
                 }
             }
         }
+        edumpi_mpit_req_on = 1;
     }
     pthread_mutex_unlock(&reg_lock);
 }
@@ -568,8 +605,11 @@ void edumpi_mpit_init(void)
         return;
     }
     ev_mask = ~0u;
+    cb_nop = getenv("EDUMPI_CB_NOP") && '1' == getenv("EDUMPI_CB_NOP")[0];
+    ev_mask &= ~(1u << EV_REQ_COMPLETED);               /* lazily, see edumpi_mpit_need_coll_requests() */
     if (getenv("EDUMPI_EVENT_MASK")) {
         ev_mask = (unsigned) strtoul(getenv("EDUMPI_EVENT_MASK"), NULL, 0);
+        edumpi_mpit_req_on = 1;                          /* an explicit mask is taken as it is */
     }
     if (getenv("EDUMPI_MATCHING") && '0' == getenv("EDUMPI_MATCHING")[0]) {
         ev_mask &= ~((1u << EV_ACTIVATE) | (1u << EV_MATCH) | (1u << EV_TRANSFER));

@@ -156,6 +156,10 @@ def main(out):
         o.append('    if (!edumpi_enabled) {')
         o.append('        return PMPI_%s(%s);' % (name, ', '.join(names)))
         o.append('    }')
+        if kind in ('icoll', 'pcoll'):
+            o.append('    if (!edumpi_mpit_req_on) {')
+            o.append('        edumpi_mpit_need_coll_requests();')
+            o.append('    }')
         o.append('    r_ = edumpi_rec_begin("MPI_%s", &fid_, %s, %s);' % (name, cid, fl))
         iscoll = kind in ('coll', 'icoll')
         pcoll_op = OPID.get(name[:-5], 0xFFFFFFFF) if kind == 'pcoll' else 0xFFFFFFFF

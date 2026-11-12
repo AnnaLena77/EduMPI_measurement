@@ -21,6 +21,8 @@ int64_t edumpi_vsum(const int *counts, int n, MPI_Datatype dt);
 int64_t edumpi_wsum(const int *counts, const MPI_Datatype *types, int n);
 
 /* MPI_T backend (src/mpit/mpit.c) */
+extern int edumpi_mpit_req_on;                   /* 1 once the REQUEST_COMPLETED event is registered */
+void edumpi_mpit_need_coll_requests(void);
 extern int edumpi_mpit_active;                   /* 1 if the library offers the events and they are registered */
 extern _Thread_local edumpi_rec_t *edumpi_tls_cur;   /* record of the MPI call this thread is in */
 extern _Thread_local int edumpi_tls_op;
