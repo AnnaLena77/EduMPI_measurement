@@ -7,9 +7,8 @@
 #include <mpi.h>
 #include <stdlib.h>
 
-#include "../core/store.h"
+#include "wrap.h"
 
-static int g_enabled;
 
 static void start_tool(void)
 {
@@ -26,7 +25,7 @@ static void start_tool(void)
     PMPI_Comm_size(MPI_COMM_WORLD, &size);
     PMPI_Get_processor_name(node, &len);
     edumpi_store_init(rank, size, node, edumpi_file_sink_new(dir ? dir : "."), ms ? (unsigned) atoi(ms) : 500);
-    g_enabled = 1;
+    edumpi_enabled = 1;
 }
 
 int MPI_Init(int *argc, char ***argv)
@@ -49,8 +48,8 @@ int MPI_Init_thread(int *argc, char ***argv, int required, int *provided)
 
 int MPI_Finalize(void)
 {
-    if (g_enabled) {
-        g_enabled = 0;
+    if (edumpi_enabled) {
+        edumpi_enabled = 0;
         edumpi_store_finalize();
     }
     return PMPI_Finalize();

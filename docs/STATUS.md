@@ -8,7 +8,7 @@ and the full plan are in `EDUMPI_T_DEVELOPMENT_PLAN.md` (kept next to this repos
 | Part | State |
 |---|---|
 | Open MPI fork `FuldaHPC/code-ompi_edumpi_t` (base: upstream `main`, 6.1.0a1, commit `89b41f785f`) | builds (release and debug); WP-A on branch `mpit/pml-common-events` and WP-B on branch `mpit/coll-events` (stacked on WP-A), both implemented, pushed to the fork and tested |
-| This tool (`EduMPI_measurement`) | milestone G1 done (store, monitor thread, file sink, init/finalize wrappers); G2 onwards open |
+| This tool (`EduMPI_measurement`) | milestones G1 (store, monitor thread, file sink) and G2 (70 PMPI wrappers, request tracking) done; G3 onwards open |
 | Upstream pull requests | none (decision: prototype first) |
 
 ## 2. Test environment
@@ -142,6 +142,29 @@ Not in G1: PostgreSQL binary COPY (planned as G1b, the old `pgcopy.c` is in `leg
 calls (G2), MPI_T (G3 onwards). Segments are `munmap`ed after writing; recycling them (as the
 `eduhpx_mpi_data` branch does to avoid page-fault cost) is not done yet and matters for the
 overhead measurement.
+
+### 3.7 Tool milestone G2: PMPI wrappers generated from one table
+
+`tools/gen_pmpi.py` holds a table of 70 MPI calls (blocking and non-blocking point-to-point,
+send-receive incl. MPI 4 `Isendrecv`, blocking and non-blocking collectives incl. neighbour
+collectives, one-sided incl. request-based) with, per call, the expressions for bytes sent,
+bytes received, peer and communicator; it generates `src/pmpi/wrappers.c`. By hand in
+`src/pmpi/track.c`: caches of communicator and window (label, rank, size, world-rank translation,
+dropped at `MPI_Comm_free` / `MPI_Win_free`), the request table, and the wrappers of `Wait`
+(recorded as its own call, as in the fork), `Waitall/any/some`, `Test*`, `Request_free`.
+A non-blocking call leaves its record open; the wait or test that observes completion fills
+`done_ns` (and, for a receive, the real sender and the received bytes) and completes it.
+
+| Test (job 10399, `tests/test_calls.c` with known traffic on 4 ranks over 2 nodes, `tests/check_calls.py`) | Result |
+|---|---|
+| `Send/Recv` ring 1000 B, `Irecv(ANY_SOURCE)/Isend` 800 B with `Waitall`, `Sendrecv` 64 B, `Bcast` 400 B (root and others), `Allreduce` 80 B on world and on a split communicator, `Gather`, `Alltoallv`, communicator labels for world/split/dup, `Ibcast` + `Wait`, `Put` 40 B | 60 of 60 checks PASS (15 per rank): sizes, world-rank partners, real sender of an any-source receive, completion after start, no open record at the end |
+
+Limits of this PMPI-only layer (by design; the MPI_T backend replaces them): the completion time of a
+non-blocking call is when the wait or test returned, not when the message arrived; collective
+byte counts are computed from the arguments, not from the library's internal messages; no
+algorithm, no peer bitmap, no late sender/receiver; neighbour collectives count one neighbour;
+persistent requests (`*_init`, `Start`) and the `_c` large-count variants are not wrapped;
+`MPI_Wait*`/`Test*` of persistent or generalized requests are not tracked.
 
 ### 3.4 Not done yet
 
