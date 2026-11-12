@@ -278,6 +278,23 @@ What the measurement showed:
   requests, or a switch for matching data), profile the callback path, repeat on a workload with a realistic call
   rate, measure the library with events registered but without the tool.
 
+### 3.12 MPI Forum Tools WG "Entities & Sets": what is covered
+
+Review of 2026-11-12 against the WG slides (details and the planned work: section 20 of
+`EDUMPI_T_DEVELOPMENT_PLAN.md`). This section was missing from earlier versions of this report.
+
+| WG idea | State |
+|---|---|
+| Set to track handles: created / freeing events, registration inside the handler | communicators: used and tested (event handles are allocated in the `communicator_created` callback). **Requests: not built** (`REQUEST_CREATED` / `REQUEST_FREEING`, request-bound PVARs = WP-C) |
+| Set for request states: activated, completed, cancelled, freed | activated and completed for PML requests of ob1 and ucx (`ompi.pml_*_start` / `_complete`); cancelled and freed only as ob1 events; **nothing for collective requests** |
+| TRANSFER set and tracking the p2p messages of a collective | blocking collectives: byte sums and partner bitmap from internal messages. **Non-blocking collectives: only the algorithm**; byte counts still come from the arguments and there is no partner bitmap, because the `parent` element of the start events is not filled yet (planned as WP-B2) |
+| Request lifetime problem (binding to a short-lived request) | avoided for point-to-point requests by correlating events through the request token, including a request that completes before the call returns. The test loop that would prove it (10^6 one-byte operations) is not written |
+| Dummy requests, token rules | observed (token 0 for operations without an own request, tokens are reused) but only described in the plan |
+| Semantic set names | Open MPI names are hard-coded in the tool; no name table |
+
+So the statement "the database row is reproducible from events" holds for blocking calls and for
+non-blocking point-to-point calls, **not yet for non-blocking collectives**.
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs
