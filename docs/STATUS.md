@@ -475,6 +475,14 @@ non-blocking collective, a blocking one and a Sendrecv have identical byte sums 
 the bytes; bytes sent by all ranks equal bytes received; the completion time comes from the request event. PASS on ob1 and ucx
 (job 10484). Fork commit on `mpit/request-events-pvars`.
 
+### 3.21 Whole-tree `make check` of the fork
+
+Job 10478 (debug tree, `make -k check` over the whole tree, sources of 2026-11-12 evening). All directories passed except two tests:
+`mpi_t_event_request_pml_state` failed because the job had copied the sources before the test was corrected (the corrected test passes on ob1
+and ucx, job 10477); `mpi_t_stress` (10000 MPI_T init/finalize cycles) had not finished after 90 minutes under `make check` on BeeGFS and was
+killed by hand; it is known to be slow there and passes standalone (section 3.3). Everything else: PASS or SKIP, no ERROR. The tests added after
+this run (`test_adapt`, the adapt change) were run separately (3.20).
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs
