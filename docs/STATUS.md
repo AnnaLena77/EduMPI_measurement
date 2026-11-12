@@ -285,7 +285,7 @@ Review of 2026-11-12 against the WG slides (details and the planned work: sectio
 
 | WG idea | State |
 |---|---|
-| Set to track handles: created / freeing events, registration inside the handler | communicators: used and tested (event handles are allocated in the `communicator_created` callback). **Requests: not built** (`REQUEST_CREATED` / `REQUEST_FREEING`, request-bound PVARs = WP-C) |
+| Set to track handles: created / freeing events, registration inside the handler | communicators: used and tested (event handles are allocated in the `communicator_created` callback). Requests: `REQUEST_CREATED` / `REQUEST_FREEING` and a request-bound PVAR bound in the handler, tested for ob1 (section 3.14) |
 | Set for request states: activated, completed, cancelled, freed | activated and completed for PML requests of ob1 and ucx (`ompi.pml_*_start` / `_complete`); cancelled and freed only as ob1 events; collective requests of libnbc now have activated/completed events (generic REQUEST set, WP-B2) |
 | TRANSFER set and tracking the p2p messages of a collective | blocking collectives: byte sums and partner bitmap from internal messages. Non-blocking collectives: byte sums, partner bitmap and completion time from the `parent` token and the REQUEST set (WP-B2, section 3.13) |
 | Request lifetime problem (binding to a short-lived request) | avoided for point-to-point requests by correlating events through the request token, including a request that completes before the call returns. The test loop that would prove it (10^6 one-byte operations) is not written |
@@ -351,6 +351,30 @@ Now covered: byte sums, partner bitmaps and completion time of non-blocking coll
 are at parity with blocking ones for the MPI_T data. Not covered: persistent collectives (`MPI_*_init`, `MPI_Start`
 are not wrapped), `coll/adapt` non-blocking operations (no parent token there), kinds other than collective in the
 REQUEST set, REQUEST_CREATED / REQUEST_FREEING and request-bound PVARs (WP-C).
+
+### 3.14 WP-C: request lifetime events and a request-bound PVAR (fork branch `mpit/request-events-pvars`)
+
+The mechanism of the WG slides 5, 6 and 8, in the library: `ompi.mpi.request_created` / `ompi.mpi.request_freeing`
+(set HANDLE for requests, not bound to an object; payload request handle, communicator, kind, flags), raised for
+non-blocking and persistent requests of ob1, ucx and libnbc, never for the internal requests of blocking calls and not
+for the shared pre-completed ("dummy") request of an operation that completes inline. The freeing event comes before
+the request is released. The request-bound PVAR `pml_ob1_request_bytes` (class size, `MPI_T_BIND_MPI_REQUEST`) is
+bound in the created handler and read in the freeing handler.
+
+| Test (job 10450, `mpi_t_event_request_handle`, 2 nodes x 2 ranks, 200000 iterations, plus singleton) | Result |
+|---|---|
+| p2p loop on ob1 and ucx: created and freeing events match one to one, same tokens, every created request freed; about half of the one-byte requests are dummy requests without events | PASS |
+| persistent requests: one created per request, not per start; one freeing | PASS |
+| Ibcast loop: created = freeing | PASS |
+| ob1: PVAR bound in the created handler for every request, read in the freeing handler, value 1 byte (200001 of 200001 receives, sends 1 byte) | PASS |
+
+Found on the way: (1) the library refused to bind any variable to ob1 or libnbc requests, because the object check
+accepted only the class named `ompi_request_t` (fixed: accept derived classes); (2) a request variable must be a
+size, not a counter: a counter reports the change since the bind and the recycled request object still holds the
+value of its previous use; (3) an eager send never updates `req_bytes_delivered` (a completed send reports the message
+size). Not done: a request-bound PVAR for ucx and for collective requests, `REQ_INTERNAL_MESSAGES` and `REQ_WAIT_TIME`, the
+tool using bound PVARs (it uses the tokens of the events), the rule "a tool must accept a handle it never saw
+created" in the tool, and the other request kinds (one-sided, I/O, generalized, partitioned).
 
 ### 3.4 Not done yet
 

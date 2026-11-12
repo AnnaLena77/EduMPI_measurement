@@ -13,7 +13,12 @@ export ACLOCAL_PATH=$(dirname $(dirname $(readlink -f $(which libtoolize))))/sha
 export M4=$(grep -o "/nix/store/[a-z0-9]*-gnum4-[0-9.]*/bin/m4" $(readlink -f $(which autom4te)) | head -1)
 (cd $TREE && touch ompi/test/t/Makefile.am && make -C ompi/test/t Makefile 2>&1 | tail -n 1)
 make -C $TREE/ompi/test/t mpi_t_event_request_state 2>&1 | tail -n 2
+make -C $TREE/ompi/test/t mpi_t_event_request_handle 2>&1 | tail -n 1
 T=$TREE/ompi/test/t/mpi_t_event_request_state
-for pml in ob1 ucx; do echo "=== pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $T 2>&1 | grep -E "PASS|FAIL|RESULT|INFO|SKIP" | sort | uniq -c | sort -rn | head -n 14; done
-echo "=== singleton"; $T; echo "exit $?"
+TH=$TREE/ompi/test/t/mpi_t_event_request_handle
+for pml in ob1 ucx; do
+  echo "=== request state test, pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $T 2>&1 | grep -E "PASS|FAIL|RESULT|INFO|SKIP" | sort | uniq -c | sort -rn | head -n 14
+  echo "=== request handle (lifetime) test, pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $TH 200000 2>&1 | grep -E "PASS|FAIL|RESULT|INFO|SKIP" | sort | uniq -c | sort -rn | head -n 14
+done
+echo "=== singleton lifetime test"; $TH 200000; echo "exit $?"
 echo DONE
