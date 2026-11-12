@@ -465,6 +465,16 @@ stores one internal peer, the tool -1; the bitmap is the information) and one mo
 The algorithm names differ in form (`recursive_doubling` against `tuned recursive_doubling`) and, between Open MPI versions, in the
 decision (`binary_tree` against `binomial`); a same-version comparison needs the fork port to main, which does not exist.
 
+### 3.20 coll/adapt: attribution of Ibcast and Ireduce
+
+The messages of `coll/adapt` are posted from its callbacks (any thread, during progress) and carried no parent. The fork now sets the
+thread-local parent to the collective request around each `isend`/`irecv` of `coll_adapt_ibcast.c` and `coll_adapt_ireduce.c` (10 sites)
+and raises created / activated / completed / freeing for the adapt request. Test `test_adapt` + `check_adapt.py` (job
+`cluster/tool_adapt_check.sbatch`, `--mca coll_adapt_priority 100`, 4 ranks on 2 nodes): A alone and A overlapped with a second
+non-blocking collective, a blocking one and a Sendrecv have identical byte sums and partner sets; B (10 times the count) moves 10 times
+the bytes; bytes sent by all ranks equal bytes received; the completion time comes from the request event. PASS on ob1 and ucx
+(job 10484). Fork commit on `mpit/request-events-pvars`.
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs

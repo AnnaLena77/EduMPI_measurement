@@ -36,6 +36,9 @@ test_persist: tests/test_persist.c
 test_nbc: tests/test_nbc.c
 	$(CC) $(CFLAGS) -o $@ tests/test_nbc.c
 
+test_adapt: tests/test_adapt.c
+	$(CC) $(CFLAGS) -o $@ tests/test_adapt.c
+
 test_late: tests/test_late.c
 	$(CC) $(CFLAGS) -o $@ tests/test_late.c
 
@@ -46,4 +49,4 @@ check: test_store test_init test_calls libedumpi.so
 	python3 tests/check_calls.py _check 4
 
 clean:
-	rm -rf libedumpi.so test_store test_init test_calls test_late test_nbc test_persist bench _check
+	rm -rf libedumpi.so test_store test_init test_calls test_late test_nbc test_adapt test_persist bench _check
