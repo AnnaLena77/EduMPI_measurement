@@ -7,7 +7,7 @@ and the full plan are in `EDUMPI_T_DEVELOPMENT_PLAN.md` (kept next to this repos
 
 | Part | State |
 |---|---|
-| Open MPI fork `FuldaHPC/code-ompi_edumpi_t` (base: upstream `main`, 6.1.0a1, commit `89b41f785f`) | builds (release and debug), WP-A implemented on branch `mpit/pml-common-events` and tested |
+| Open MPI fork `FuldaHPC/code-ompi_edumpi_t` (base: upstream `main`, 6.1.0a1, commit `89b41f785f`) | builds (release and debug); WP-A on branch `mpit/pml-common-events` and WP-B on branch `mpit/coll-events` (stacked on WP-A), both implemented, pushed to the fork and tested |
 | This tool (`EduMPI_measurement`) | not started: skeleton, `legacy/`, probe, cluster job scripts |
 | Upstream pull requests | none (decision: prototype first) |
 
@@ -69,9 +69,43 @@ Known limits (also in the plan): under `pml ucx` a non-blocking send raises `sen
 `mrecv`/`imrecv` report `MPI_ANY_TAG`; persistent UCX requests are not instrumented; a UCX
 receive that matches immediately raises `recv_complete` before `recv_start` (pair by token).
 
+### 3.5 WP-B: collective algorithm event (branch `mpit/coll-events`)
+
+One event, `ompi.coll_algorithm_selected`, bound to a communicator, level 4. Payload: request
+(non-blocking collectives), msg_size (bytes per process), parent_comm, operation (`COLLTYPE`
+number), algorithm (component specific id), component (1 basic, 2 tuned, 3 han, 4 libnbc, ...),
+comm_size, root, level (0 user communicator, 1 inter-node, 2 intra-node helper of HAN).
+For `tuned` and `libnbc` the algorithm id is the value of the control variable
+`coll_<component>_<operation>_algorithm`, so the name comes from that variable's enumeration;
+no new enumeration was needed.
+
+Implementation: `ompi/mca/coll/base/coll_base_events.[ch]`; raised in the 14 `tuned`
+`*_intra_do_this` functions (every fixed and dynamic decision ends there), in `libnbc` for
+`ibcast`, `iallreduce`, `ireduce`, `iallgather` (with the request token), and at the dynamic
+dispatch of `han`. HAN registers its helper communicators; their events are delivered to
+registrations on the **user** communicator (a tool cannot reach the helper communicators), with
+`level` 1/2 and `parent_comm`.
+
+| Test (job 10379, `cluster/test_coll_events.sbatch`, 2 nodes x 2 ranks, new test `mpi_t_event_coll_algorithm`) | Result |
+|---|---|
+| `coll ^han`, `pml ob1` and `pml ucx`: bcast, allreduce, barrier events with right operation, communicator size, message size | PASS |
+| forced `tuned` bcast algorithm 6 and 3 (`coll_tuned_use_dynamic_rules 1`): reported id equals the forced id | PASS |
+| default (HAN active): HAN decision at level 0; tuned and libnbc algorithms on the helper communicators at level 1 and 2 with `parent_comm` | observed in the event log; the test checks the level-0 events |
+| singleton run | skips (needs 2 processes) |
+
+Bugs found while testing: HAN events were first bound to the helper communicators, where no tool
+can register; they are now delivered to the user communicator. The test first matched the
+internal allreduce of communicator creation; it now matches by message size.
+
+Known limits: `libnbc` reports only four operations and, for persistent collectives, at
+initialisation instead of every start; `han` ids are 0 (default task based) and 255 (default
+simple) when no algorithm table entry is selected; `basic`, `adapt`, `xhc`, `acoll`, `ucc`, `sm`
+are not instrumented; the new test is not part of `make check` runs with one process (it skips).
+The whole-tree `make check` was not repeated after WP-B.
+
 ### 3.4 Not done yet
 
-Measured overhead of the new events (WP-H), collective algorithm events (WP-B), PVARs/CVARs
+Measured overhead of the new events (WP-H), PVARs/CVARs
 (WP-D/F), request lifetime events (WP-C), the measurement tool itself (WP-G), `btl uct` for ob1,
 cross-node clock offset. The `make check` run of the whole fork after WP-A was not repeated;
 only the tests listed above ran with the WP-A changes.
@@ -83,6 +117,7 @@ only the tests listed above ran with the WP-A changes.
 sbatch cluster/dev_build.sbatch dev          # incremental debug build -> install/dev-dbg
 sbatch cluster/test_pml_events.sbatch dev    # builds and runs mpi_t_event_pml_p2p and the probe
 sbatch cluster/util_check.sbatch dev         # test/util check
+sbatch cluster/test_coll_events.sbatch dev   # WP-B test in several modes (2 nodes x 2 ranks)
 ```
 
 The probe `tests/mpit_ob1_probe.c` registers every event whose name starts with a prefix
