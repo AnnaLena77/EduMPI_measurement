@@ -383,9 +383,9 @@ static int req_insert(uintptr_t key, edumpi_rec_t *rec, MPI_Comm comm, int kind)
 
 /* completion events that arrived before the call that started the request had returned */
 typedef struct { uintptr_t token; uint64_t when; int partner, is_recv; int64_t bytes; } stash_t;
-static stash_t stash[256];
-static unsigned stash_next;
+static stash_t stash[256];                   /* direct mapped by the token hash: add and fill touch one slot */
 static _Atomic int stash_count;
+#define STASH_SLOT(tok) (((tok) >> 4) * 11400714819323198485ull >> 56)
 
 static void apply_fill(edumpi_rec_t *r, uint64_t when, int partner, int64_t bytes, int is_recv)
 {
@@ -412,9 +412,15 @@ int edumpi_req_fill(uintptr_t token, uint64_t when_ns, int partner, int64_t byte
         apply_fill(e->rec, when_ns, partner, bytes, is_recv);
         return 1;
     }
+    /* An event for a request that is not in the table: either the request is still being posted (the call has not
+       returned, so edumpi_req_add has not run) or it belongs to an operation the tool does not track (the internal
+       requests of blocking calls). The latter are the large majority and are never claimed: do not stash them. */
+    if (edumpi_tls_cur && (edumpi_tls_cur->flags & EDUMPI_F_BLOCKING)) {
+        return 0;
+    }
     pthread_mutex_lock(&req_lock);
     {
-        stash_t *s = &stash[stash_next++ % 256];
+        stash_t *s = &stash[STASH_SLOT(token)];
         if (0 == s->token) {
             atomic_fetch_add(&stash_count, 1);
         }
@@ -437,10 +443,11 @@ void edumpi_req_add(MPI_Request req, edumpi_rec_t *rec, MPI_Comm comm, int kind)
     }
     if (atomic_load_explicit(&stash_count, memory_order_relaxed) > 0) {   /* an event for this request came first */
         pthread_mutex_lock(&req_lock);
-        for (unsigned i = 0; i < 256; ++i) {
-            if (stash[i].token == (uintptr_t) req) {
-                apply_fill(rec, stash[i].when, stash[i].partner, stash[i].bytes, stash[i].is_recv);
-                stash[i].token = 0;
+        {
+            stash_t *st = &stash[STASH_SLOT((uintptr_t) req)];
+            if (st->token == (uintptr_t) req) {
+                apply_fill(rec, st->when, st->partner, st->bytes, st->is_recv);
+                st->token = 0;
                 atomic_fetch_sub(&stash_count, 1);
             }
         }

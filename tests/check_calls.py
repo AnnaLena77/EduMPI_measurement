@@ -36,7 +36,7 @@ for rank in range(n):
     isd = by['MPI_Isend'][0]
     check(t + 'MPI_Isend 800 B to next with completion', isd['send_bytes'] == 800 and isd['partner'] == nxt and isd['flags'] & HAS_DONE)
     sr = by['MPI_Sendrecv'][0]
-    check(t + 'MPI_Sendrecv 64 B each way', sr['send_bytes'] == 64 and sr['recv_bytes'] == 64 and sr['partner'] == prv)
+    check(t + 'MPI_Sendrecv 64 B each way, partner = destination (as in the fork)', sr['send_bytes'] == 64 and sr['recv_bytes'] == 64 and sr['partner'] == nxt)
     SUM = 128   # MPIT_SUM: byte counts are sums over internal messages, argument based checks do not apply
     b = by['MPI_Bcast'][0]
     check(t + 'MPI_Bcast 400 B (%s)' % ('root sends' if rank == 1 else 'receives'),
