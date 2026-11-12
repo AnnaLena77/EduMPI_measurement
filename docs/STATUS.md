@@ -8,7 +8,7 @@ and the full plan are in `EDUMPI_T_DEVELOPMENT_PLAN.md` (kept next to this repos
 | Part | State |
 |---|---|
 | Open MPI fork `FuldaHPC/code-ompi_edumpi_t` (base: upstream `main`, 6.1.0a1, commit `89b41f785f`) | builds (release and debug); WP-A on branch `mpit/pml-common-events` and WP-B on branch `mpit/coll-events` (stacked on WP-A), both implemented, pushed to the fork and tested |
-| This tool (`EduMPI_measurement`) | milestones G1 (store, file sink), G2 (70 PMPI wrappers), G3 (MPI_T backend: completion, internal sums, bitmaps, algorithms) done; G4 onwards open |
+| This tool (`EduMPI_measurement`) | milestones G1 (store, file sink), G2 (70 PMPI wrappers), G3 (MPI_T backend: completion, internal sums, bitmaps, algorithms) and G4 (late sender/receiver on ob1) done; G1b, G5, G6 open |
 | Upstream pull requests | none (decision: prototype first) |
 
 ## 2. Test environment
@@ -198,6 +198,28 @@ instead of all); the UCX persistent requests were the last PML path without the 
 (closed in the fork, branch `mpit/pml-common-events`, test extended). Not done: non-blocking
 collectives get their algorithm only if the event is raised inside the call (libnbc does), no
 byte sums (the schedule runs later); late sender/receiver (G4); PostgreSQL sink (G1b).
+
+### 3.9 Tool milestone G4: late sender and late receiver
+
+With `pml ob1` the tool also registers `ompi.pml_ob1_request_activate`, `_posted_match` and
+`_transfer` (optional; absent with `pml ucx`). During a user point-to-point call the activation
+event stores token, record and event time; `posted_match` of the same token gives
+`late_sender_ns` (the receiver waited from the activation until a message matched), the first
+`transfer` gives `late_receiver_ns` (rendezvous: the sender waited from the activation until the
+receiver took part; an eager send has no `transfer` event and therefore 0). Entries are dropped at
+the completion event and when a recycled request structure is activated again. Rules from the
+WP-0 measurements (section 19 of the plan).
+
+| Test (job 10409, `tests/test_late.c` with 300 ms delays, `pml ob1`, tcp, 2 nodes) | Result |
+|---|---|
+| A: sender sleeps 0.3 s, receiver blocks in `MPI_Recv` | late sender 300.2 ms; no late receiver for the eager message |
+| B: 4 MiB rendezvous, receiver sleeps 0.3 s | late receiver 300.4 ms at the sender; late sender 0.2 ms |
+| C: 8 B eager to a late receiver | late receiver 0.0 ms |
+
+Limits: ob1 only (as in the fork: with UCX the matching is inside UCX; WP-U); persistent
+requests and non-blocking calls whose `Irecv` returns before the match are handled through the
+token, not tested separately; receives that match in the unexpected queue (message first) have
+late sender 0 by definition.
 
 ### 3.4 Not done yet
 

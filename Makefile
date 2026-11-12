@@ -22,6 +22,9 @@ test_init: tests/test_init.c
 test_calls: tests/test_calls.c
 	$(CC) $(CFLAGS) -o $@ tests/test_calls.c
 
+test_late: tests/test_late.c
+	$(CC) $(CFLAGS) -o $@ tests/test_late.c
+
 check: test_store test_init test_calls libedumpi.so
 	mkdir -p _check && ./test_store _check 8 200000
 	cd _check && LD_PRELOAD=$(abspath libedumpi.so) EDUMPI_LOG_DIR=. mpirun -n 2 --oversubscribe ../test_init
@@ -29,4 +32,4 @@ check: test_store test_init test_calls libedumpi.so
 	python3 tests/check_calls.py _check 4
 
 clean:
-	rm -rf libedumpi.so test_store test_init test_calls _check
+	rm -rf libedumpi.so test_store test_init test_calls test_late _check

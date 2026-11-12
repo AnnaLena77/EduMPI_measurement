@@ -25,9 +25,13 @@
 
 #include "../pmpi/wrap.h"
 
-enum { EV_SEND_START, EV_RECV_START, EV_SEND_COMPLETE, EV_RECV_COMPLETE, EV_ALGORITHM, EV_N };
+enum { EV_SEND_START, EV_RECV_START, EV_SEND_COMPLETE, EV_RECV_COMPLETE, EV_ALGORITHM,
+       EV_ACTIVATE, EV_MATCH, EV_TRANSFER,      /* ob1 only, optional: late sender / late receiver */
+       EV_N };
 static const char *ev_names[EV_N] = {"ompi.pml_send_start", "ompi.pml_recv_start", "ompi.pml_send_complete",
-                                     "ompi.pml_recv_complete", "ompi.coll_algorithm_selected"};
+                                     "ompi.pml_recv_complete", "ompi.coll_algorithm_selected",
+                                     "ompi.pml_ob1_request_activate", "ompi.pml_ob1_posted_match",
+                                     "ompi.pml_ob1_transfer"};
 
 typedef struct {
     int index;
@@ -73,6 +77,30 @@ static void calibrate(int src)
             clock_offset_ns = (int64_t) (a + (b - a) / 2) - (int64_t) t;
         }
     }
+}
+
+/* requests of user point-to-point calls that are in flight: token -> record and activation time (event ticks) */
+typedef struct { uint64_t token; edumpi_rec_t *rec; int64_t t_act; int got_transfer; } act_t;
+#define ACT_SLOTS 4096
+static act_t acts[ACT_SLOTS];
+static pthread_mutex_t act_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static act_t *act_find(uint64_t token, int create)
+{
+    size_t h = (token >> 4) * 11400714819323198485ull % ACT_SLOTS, del = ACT_SLOTS;
+    for (size_t i = 0; i < ACT_SLOTS; ++i) {
+        size_t j = (h + i) % ACT_SLOTS;
+        if (acts[j].token == token) {
+            return &acts[j];
+        }
+        if (1 == acts[j].token && del == ACT_SLOTS) {
+            del = j;
+        }
+        if (0 == acts[j].token) {
+            return create ? &acts[del < ACT_SLOTS ? del : j] : NULL;
+        }
+    }
+    return create && del < ACT_SLOTS ? &acts[del] : NULL;
 }
 
 static inline uint64_t u64at(const unsigned char *b, int off) { uint64_t v; memcpy(&v, b + off, 8); return v; }
@@ -134,6 +162,14 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
             }
             return;
         }
+        if (token > 1) {
+            act_t *a;
+            pthread_mutex_lock(&act_lock);
+            if ((a = act_find(token, 0)) != NULL) {
+                a->token = 1;                               /* request finished: forget it */
+            }
+            pthread_mutex_unlock(&act_lock);
+        }
         MPI_T_event_get_timestamp(inst, &ts);
         uint64_t when = (uint64_t) ((int64_t) ts + clock_offset_ns);
         if (token && edumpi_req_fill((uintptr_t) token, when, pw, len, is_recv)) {
@@ -147,6 +183,34 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
             cur->recv_bytes = len;
             cur->flags |= EDUMPI_F_HAS_DONE | EDUMPI_F_EVENT_DONE;
         }
+        return;
+    }
+    if (EV_ACTIVATE == kind || EV_MATCH == kind || EV_TRANSFER == kind) {
+        uint64_t token = u64at(b, e->disp[0]);
+        act_t *a;
+        MPI_T_event_get_timestamp(inst, &ts);
+        pthread_mutex_lock(&act_lock);
+        if (EV_ACTIVATE == kind) {
+            if (token > 1 && (a = act_find(token, 0)) != NULL) {
+                a->token = 1;       /* request structures are recycled: drop a stale entry of an earlier use */
+            }
+            if (cur && !(cur->flags & EDUMPI_F_COLLECTIVE) && token > 1 && (a = act_find(token, 1))) {
+                a->token = token;
+                a->rec = cur;
+                a->t_act = (int64_t) ts;
+                a->got_transfer = 0;
+            }
+        } else if ((a = act_find(token, 0)) != NULL) {
+            if (EV_MATCH == kind && 0 == a->rec->late_sender_ns) {
+                /* receive request matched by an arriving message: the receiver waited since the activation */
+                a->rec->late_sender_ns = (uint64_t) ((int64_t) ts - a->t_act);
+            } else if (EV_TRANSFER == kind && !a->got_transfer) {
+                /* first data step after the activation: the sender waited for the receiver (rendezvous) */
+                a->got_transfer = 1;
+                a->rec->late_receiver_ns = (uint64_t) ((int64_t) ts - a->t_act);
+            }
+        }
+        pthread_mutex_unlock(&act_lock);
         return;
     }
     if (EV_ALGORITHM == kind) {
@@ -282,7 +346,7 @@ static int lookup(const char *name, evinfo_t *out)
     return 0;
 }
 
-static const int need_elems[EV_N] = {7, 7, 6, 6, 9};
+static const int need_elems[EV_N] = {7, 7, 6, 6, 9, 1, 1, 2};
 
 void edumpi_mpit_init(void)
 {
