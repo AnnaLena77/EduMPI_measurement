@@ -483,6 +483,57 @@ and ucx, job 10477); `mpi_t_stress` (10000 MPI_T init/finalize cycles) had not f
 killed by hand; it is known to be slow there and passes standalone (section 3.3). Everything else: PASS or SKIP, no ERROR. The tests added after
 this run (`test_adapt`, the adapt change) were run separately (3.20).
 
+### 3.22 Overhead, third round: where the cost is and what was changed (2026-11-12 night)
+
+Method: `cluster/tool_overhead_sets.sbatch` (event sets by `EDUMPI_EVENT_MASK`), `tool_overhead_nop.sbatch` (`EDUMPI_CB_NOP=1`: the tool
+callbacks return at once, so only the library's delivery is measured), `tool_callgrind.sbatch` (instruction profile), 4 ranks on 2 nodes,
+2 cores per rank, `bench` as in 3.11a. Times in microseconds (run 2 of 3).
+
+Findings
+- Of the extra 3.4 us per ping-pong half (ucx, all events), **the library's event delivery is about 3.0 us and the tool's callbacks about
+  0.6 us** (`all-nop` 5.2 against `all` 5.8, `pmpi` 2.2). With ob1 the same: 3.1 us delivery, 1.2 us callbacks. The time stamp is not the
+  cost (3.11). Per event the library needs about 0.5 us: two round trips of the global event lock, six atomic reference counts, the
+  instance from the free list and the payload copy.
+- Callgrind (ob1, all events): 58 % of all instructions are in `mca_base_event_raise_internal` and below it; of that the tool's callback
+  is 20 %, `MPI_T_event_copy` 11 %, deferred-free setup/teardown 10 %, mutex lock/unlock 10 %.
+- **A bug of the tool**: events of requests that the tool does not track (the internal requests of every blocking call) were put into a
+  256-entry stash, which therefore was never empty, so every `MPI_Isend`/`Irecv` scanned 256 entries under a mutex (7 % of the instructions).
+  The stash is now direct mapped, events inside blocking calls are not stashed.
+- **A regression of mine**: the new generic `request_completed` (3.18) is raised for every point-to-point request, +1.1 to 1.5 us per message
+  for a tool that has registered it. It was registered by default for the completion time of non-blocking collectives.
+
+Changes
+- Fork (`10af6564c6`): deferred-free lists are constructed only when an object is collected; payloads without padding are copied with one
+  `memcpy` (`dense_layout`).
+- Tool: stash fix; **lazy registration** (`edumpi_mpit_need`): the generic `request_completed` is registered when the program first calls
+  a non-blocking or persistent collective, the send/receive start events (used only for the internal messages of collectives) when it first
+  calls any collective. A program that only does point-to-point never pays for them. An explicit `EDUMPI_EVENT_MASK` is taken as given.
+  Correctness: `tool_check` (ob1, ucx, nohan, pmpi-only, non-blocking collectives, persistent, late sender/receiver) and `test_adapt`: all PASS.
+
+Result, ping-pong half / `Irecv+Isend+Waitall` (us):
+
+| | ucx | ob1 |
+|---|---|---|
+| no tool | 1.76 / 2.21 | 3.22 / 3.57 |
+| PMPI only | 2.26 / 3.43 | 3.78 / 5.05 |
+| MPI_T, start of this session (3.11a) | 5.27 / 9.29 | 7.26 / 13.6 |
+| MPI_T, after the generic pair (all events) | 6.54 / 12.0 | 8.81 / 16.5 |
+| MPI_T, now (default; `bench` uses collectives, so the start events are on) | 4.65 / 8.3 | 6.90 / 12.4 |
+
+Per event set (ob1, ping-pong half): all events 8.3, without matching events (late sender/receiver then impossible) 6.6, plus without the
+request event 5.5, minimal (start, complete, algorithm) 5.3, algorithm event only 4.1. The algorithm events cost about 7 us on a
+`Allreduce` under HAN (2 to 3 events, delivery 2 to 3 us each: HAN nests several collectives).
+
+Applications (4 ranks, 2 nodes, 2 cores per rank):
+- NPB IS class C (`tool_npb_is.sbatch`, job 10500): ucx 6.69 s without tool, 6.64 s PMPI, 6.64 s MPI_T; ob1 6.52 / 6.45 / 6.47 s. Verification
+  successful in all runs. No measurable overhead (compute bound).
+- Jacobi stencil `partdiff` with 16 interlines, 200000 iterations (`tool_partdiff.sbatch`, job 10504, before the lazy start events):
+  ucx 40.2 s / 40.9 s / 42.4 s (none / PMPI / MPI_T, +5 %), ob1 40.7 s / 42.4 s / 46.6 s (+14 %); with 32 interlines +1 % (ucx) and +1.5 % (ob1).
+  Rerun with the final tool: see below.
+
+Not done: the AMT (HPX broadcast) workload of the +7 to +9 % reference needs the HPX build; library dispatch with a lock-free snapshot of
+the registrations (would remove most of the 0.5 us per event; a change of the upstream event framework, not made here).
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs

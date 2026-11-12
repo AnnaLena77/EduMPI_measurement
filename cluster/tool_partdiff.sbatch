@@ -17,7 +17,7 @@ mpicc -O3 -o partdiff $HOME/parcio-partdiff-mpi/partdiff.c -lm 2>&1 | grep -E "e
 test -x partdiff || { echo BUILD FAILED; exit 1; }
 mkdir -p run && cd run
 BIND="--map-by ppr:2:node:PE=2 --bind-to core"
-for cfg in "16 200000" "32 100000"; do
+for cfg in "16 200000"; do
   set -- $cfg
   for pml in ucx ob1; do
     for mode in none pmpi mpit; do
