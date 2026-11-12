@@ -8,7 +8,7 @@ and the full plan are in `EDUMPI_T_DEVELOPMENT_PLAN.md` (kept next to this repos
 | Part | State |
 |---|---|
 | Open MPI fork `FuldaHPC/code-ompi_edumpi_t` (base: upstream `main`, 6.1.0a1, commit `89b41f785f`) | builds (release and debug); WP-A on branch `mpit/pml-common-events` and WP-B on branch `mpit/coll-events` (stacked on WP-A), both implemented, pushed to the fork and tested |
-| This tool (`EduMPI_measurement`) | not started: skeleton, `legacy/`, probe, cluster job scripts |
+| This tool (`EduMPI_measurement`) | milestone G1 done (store, monitor thread, file sink, init/finalize wrappers); G2 onwards open |
 | Upstream pull requests | none (decision: prototype first) |
 
 ## 2. Test environment
@@ -122,6 +122,26 @@ Known limits: `libnbc` reports only four operations and, for persistent collecti
 initialisation instead of every start; `han` ids are 0 (default task based) and 255 (default
 simple) when no algorithm table entry is selected; `xhc`, `acoll`, `ucc` report no sub-algorithm;
 `ucc` non-blocking operations and `adapt`/`libnbc` persistent variants are not covered.
+
+### 3.6 Tool milestone G1: store, monitor thread, file sink, `MPI_Init`/`MPI_Finalize` wrappers
+
+Code in `src/core/` (`record.h` 128-byte record, `store.[ch]` lock-free segment store and monitor
+thread, `file_sink.c`) and `src/pmpi/init.c`; format in `docs/LOG_FORMAT.md`, reader
+`tools/edumpi_dump.py`. A record is claimed with one atomic add and written into by pointer, also
+later by another thread; segments of 2048 records are written and unmapped by the monitor thread
+once all their records are complete (default every 500 ms, `EDUMPI_FLUSH_MS`); an open record
+keeps only its own segment in memory. The tool is injected with `LD_PRELOAD=libedumpi.so`.
+
+| Test | Result |
+|---|---|
+| `tests/test_store.c`: 8 threads, 8,000,000 records on macOS (2.4 million flushed while running), every 1000th record kept open and completed later by another thread | all records exactly once, content intact, 0 dropped |
+| same test on the cluster (4,000,000 records, job 10398) | PASS |
+| `tests/test_init.c` (plain MPI program, tool via `LD_PRELOAD`), 2 nodes x 2 ranks, Open MPI `dev-dbg` | 4 files with correct header (rank, world size, node) and trailer |
+
+Not in G1: PostgreSQL binary COPY (planned as G1b, the old `pgcopy.c` is in `legacy/`), wrapped MPI
+calls (G2), MPI_T (G3 onwards). Segments are `munmap`ed after writing; recycling them (as the
+`eduhpx_mpi_data` branch does to avoid page-fault cost) is not done yet and matters for the
+overhead measurement.
 
 ### 3.4 Not done yet
 

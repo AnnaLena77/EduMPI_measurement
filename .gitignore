@@ -1,0 +1,5 @@
+libedumpi.so
+test_store
+test_init
+_check/
+*.dSYM/
