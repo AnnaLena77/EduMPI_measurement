@@ -295,6 +295,40 @@ Review of 2026-11-12 against the WG slides (details and the planned work: sectio
 So the statement "the database row is reproducible from events" holds for blocking calls and for
 non-blocking point-to-point calls, **not yet for non-blocking collectives**.
 
+### 3.11a Overhead, second round: one core more per rank, MPI_T thread level
+
+Two corrections to the first measurement (job 10429, same benchmark, `dev-rel`):
+
+- **The tool needs a core for its monitor thread.** The compute nodes are AMD Opteron 6272, 4 sockets x 16
+  cores, **no SMT** (1 thread per core): as with the original EduMPI (two processes per rank), the monitor
+  thread of a rank must not share its core. The first measurement let Open MPI bind each of the two ranks per
+  node to a single core, so the monitor thread competed with the rank. Now every rank gets two cores
+  (`--map-by ppr:2:node:PE=2 --bind-to core`) in **all** columns including "no tool". Use the same
+  setting for real runs.
+- **MPI_T thread level.** The tool had requested `MPI_THREAD_MULTIPLE` for MPI_T before `MPI_Init`; this makes
+  the library use thread-safe code paths for every message (+1.5 to +3 microseconds per small message). The default is now
+  `MPI_THREAD_SINGLE`; `EDUMPI_MPIT_THREADS=1` selects `MULTIPLE` for programs that create communicators
+  from several threads (columns "MT").
+
+Time per operation in microseconds (run 2 of 3; percentages against "no tool"):
+
+| Operation | UCX none | UCX PMPI only | UCX MPI_T | UCX MPI_T, MT | ob1 none | ob1 PMPI only | ob1 MPI_T | ob1 MPI_T, MT |
+|---|---|---|---|---|---|---|---|---|
+| 8 B ping-pong (one way) | 1.73 | 2.20 (+28 %) | 5.27 (+205 %) | 5.43 | 3.22 | 3.66 (+14 %) | 7.26 (+125 %) | 9.76 |
+| `Allreduce` 32 B | 12.8 | 13.7 (+7 %) | 30.3 (+137 %) | 37.7 | 21.7 | 22.8 (+5 %) | 44.9 (+107 %) | 59.2 |
+| `Irecv`+`Isend`+`Waitall` 8 B | 2.16 | 3.24 (+50 %) | 9.29 (+330 %) | 10.7 | 3.65 | 4.64 (+27 %) | 13.6 (+273 %) | 17.3 |
+| `Bcast` 64 KiB | 68.5 | 74.8 (+9 %) | 75.9 (+11 %) | 77.8 | 63.0 | 65.0 (+3 %) | 82.4 (+31 %) | 95.9 |
+
+Event selection (first round, job 10427, before both corrections, ranks sharing a core): with `pml ob1`
+the matching events (`request_activate`, `posted_match`, `transfer`) cost about 3 microseconds per ping-pong
+half (12.1 to 9.0 when switched off with `EDUMPI_MATCHING=0`, which also removes late sender/receiver);
+registering only `send_start` and `recv_complete` costs 9.5, only the algorithm event adds nothing to
+point-to-point traffic but +10 to +17 microseconds to a 32 B `Allreduce` under HAN (many internal collectives
+per call, each raising the event). Not yet remeasured with the two corrections.
+
+Both corrections changed no results: the correctness tests were repeated on the optimized build (job 10430,
+all PASS).
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs

@@ -14,18 +14,24 @@ export PATH=$P/bin:$PATH OPAL_PREFIX=$P LD_LIBRARY_PATH=$P/lib:$LD_LIBRARY_PATH 
 W=/data/fdai0231/edumpi-t/toolrun/ovh-$SLURM_JOB_ID; mkdir -p $W; cp -r $HOME/edumpi_t/tool/. $W/; cd $W; make clean >/dev/null
 make CC=mpicc libedumpi.so bench 2>&1 | grep -E "error|warning" | head
 test -f libedumpi.so || { echo BUILD FAILED; exit 1; }
+lscpu | grep -E "Model name|Thread\(s\) per core|Core\(s\) per socket|Socket\(s\)"
 mkdir -p run && cd run
+# The tool runs a monitor thread per rank. Without SMT it needs a core of its own: every rank gets 2 cores (PE=2),
+# also in the runs without tool, so that the binding is the same in all columns.
+BIND="--map-by ppr:2:node:PE=2 --bind-to core"
 for pml in ucx ob1; do
-  for mode in none pmpi mpit mpit-fast; do
+  for mode in none pmpi mpit mpit-mt; do
     for rep in 1 2 3; do
       case $mode in
         none) ENVS="" ;;
         pmpi) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_MPIT=0 -x EDUMPI_LOG_DIR=." ;;
         mpit) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=." ;;
-        mpit-fast) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=. --mca opal_mca_base_event_fast_clock 1" ;;
+        mpit-mt) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=. -x EDUMPI_MPIT_THREADS=1" ;;
+        mpit-algo) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=. -x EDUMPI_EVENT_MASK=0x10" ;;
+        mpit-algo-mt) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=. -x EDUMPI_EVENT_MASK=0x10 -x EDUMPI_MPIT_THREADS=1" ;;
       esac
       echo -n "$pml $mode run$rep: "
-      mpirun --map-by ppr:2:node --mca pml $pml $ENVS ../bench 20000 2>&1 | grep RESULT
+      mpirun $BIND --mca pml $pml $ENVS ../bench 20000 2>&1 | grep RESULT
     done
   done
 done

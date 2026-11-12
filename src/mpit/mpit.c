@@ -42,6 +42,7 @@ typedef struct {
 
 static evinfo_t ev[EV_N];
 static int created_idx = -1, freed_idx = -1;
+static unsigned ev_mask = ~0u;       /* which event types are registered on communicators (EDUMPI_EVENT_MASK, bit = enum value) */
 static int64_t clock_offset_ns;      /* CLOCK_REALTIME - source ticks, ticks are ns */
 static int t_initialized;
 
@@ -257,7 +258,7 @@ static void register_comm(uint64_t handle)
         slot->n = 0;
         for (int k = 0; k < EV_N; ++k) {
             MPI_T_event_registration r;
-            if (ev[k].index < 0) {
+            if (ev[k].index < 0 || !(ev_mask & (1u << k))) {
                 continue;
             }
             if (MPI_SUCCESS == MPI_T_event_handle_alloc(ev[k].index, &comm, MPI_INFO_NULL, &r)) {
@@ -443,7 +444,17 @@ void edumpi_mpit_init(void)
     if (off && '0' == off[0]) {
         return;
     }
-    if (MPI_SUCCESS != MPI_T_init_thread(MPI_THREAD_MULTIPLE, &provided)) {
+    ev_mask = ~(1u << EV_RECV_START);          /* recv_start carries nothing the tool uses */
+    if (getenv("EDUMPI_EVENT_MASK")) {
+        ev_mask = (unsigned) strtoul(getenv("EDUMPI_EVENT_MASK"), NULL, 0);
+    }
+    if (getenv("EDUMPI_MATCHING") && '0' == getenv("EDUMPI_MATCHING")[0]) {
+        ev_mask &= ~((1u << EV_ACTIVATE) | (1u << EV_MATCH) | (1u << EV_TRANSFER));
+    }
+    /* The thread level of MPI_T is a request to the library: MULTIPLE can make the whole library use thread-safe
+       code paths, which costs on every message. Default: SINGLE; EDUMPI_MPIT_THREADS=1 for programs that create
+       communicators from several threads. */
+    if (MPI_SUCCESS != MPI_T_init_thread(getenv("EDUMPI_MPIT_THREADS") ? MPI_THREAD_MULTIPLE : MPI_THREAD_SINGLE, &provided)) {
         return;
     }
     t_initialized = 1;
