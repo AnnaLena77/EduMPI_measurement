@@ -10,7 +10,7 @@ NAME=${1:-dev-dbg}
 P=/data/fdai0231/edumpi-t/install/$NAME
 export PATH=$P/bin:$PATH OPAL_PREFIX=$P LD_LIBRARY_PATH=$P/lib:$LD_LIBRARY_PATH PMIX_MCA_pcompress_base_silence_warning=1
 W=/data/fdai0231/edumpi-t/toolrun/$SLURM_JOB_ID; mkdir -p $W; cp -r $HOME/edumpi_t/tool/. $W/; cd $W; make clean >/dev/null  # shared file system: all nodes must see the binaries
-make CC=mpicc libedumpi.so test_store test_init test_calls test_late test_nbc 2>&1 | grep -E "error|warning" | head
+make CC=mpicc libedumpi.so test_store test_init test_calls test_late test_nbc test_persist 2>&1 | grep -E "error|warning" | head
 test -f libedumpi.so || { echo BUILD FAILED; exit 1; }
 ./test_store . 8 500000
 mkdir -p run && cd run
@@ -28,6 +28,12 @@ for pml in ob1 ucx; do
   rm -f edumpi.*.bin
   EDUMPI_DEBUG=1 LD_PRELOAD=$W/libedumpi.so EDUMPI_LOG_DIR=. mpirun --map-by ppr:2:node --mca pml $pml -x LD_PRELOAD -x EDUMPI_LOG_DIR -x EDUMPI_DEBUG ../test_nbc 2>&1 | grep -v "^edumpi mpit" | head -n 5
   python3 ../tests/check_nbc.py . 4 | grep -E "FAIL|RESULT|detail" | head -n 12
+done
+for pml in ob1 ucx; do
+  echo "== persistent requests, pml $pml (2 nodes x 2 ranks)"
+  rm -f edumpi.*.bin
+  LD_PRELOAD=$W/libedumpi.so EDUMPI_LOG_DIR=. mpirun --map-by ppr:2:node --mca pml $pml -x LD_PRELOAD -x EDUMPI_LOG_DIR ../test_persist 2>&1 | head -n 3
+  python3 ../tests/check_persist.py . 4 mpit | grep -E "FAIL|RESULT" | head -n 12
 done
 echo "== late sender / late receiver (ob1 over tcp, 2 nodes x 1 rank)"
 rm -f edumpi.*.bin

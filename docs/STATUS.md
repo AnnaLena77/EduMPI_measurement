@@ -163,7 +163,7 @@ Limits of this PMPI-only layer (by design; the MPI_T backend replaces them): the
 non-blocking call is when the wait or test returned, not when the message arrived; collective
 byte counts are computed from the arguments, not from the library's internal messages; no
 algorithm, no peer bitmap, no late sender/receiver; neighbour collectives count one neighbour;
-persistent requests (`*_init`, `Start`) and the `_c` large-count variants are not wrapped;
+the `_c` large-count variants are not wrapped (persistent requests are, section 3.16);
 `MPI_Wait*`/`Test*` of persistent or generalized requests are not tracked.
 
 ### 3.8 Tool milestone G3: MPI_T backend
@@ -395,6 +395,27 @@ Library bug found: `mca_base_pvar_handle_alloc()` crashed when a variable refuse
 (the destructor removed the half-created handle from a list it was never in); fixed. Two routes now exist for the same
 data: the events with the parent token (used by the tool today) and the request-bound PVARs; the test checks that they
 agree. The tool does not use the bound variables yet. Still no such variable for `coll/adapt`, ucx or other request kinds.
+
+### 3.16 Persistent requests in the tool; UCX event order
+
+`MPI_Send_init`, `Bsend_init`, `Ssend_init`, `Rsend_init`, `Recv_init` and the MPI 4 `*_init` of all collectives (97
+generated wrappers in total) are recorded like any call (one record each, as in the fork) and remember what the request
+stands for in a template table (communicator, kind, bytes, partner, any-source, operation; for a collective also the algorithm,
+which the library chooses at `*_init` and reports with the request token). `MPI_Start` / `MPI_Startall` (hand written, `src/pmpi/track.c`)
+write **one record per activation** (function `MPI_Start`, flag `PERSISTENT`) with the template's data, keep it open
+like a non-blocking call and finish it from the completion events or the wait. `MPI_Request_free` drops the template.
+
+| Test (`tests/test_persist.c`, `check_persist.py`, 2 nodes x 2 ranks, ob1 and ucx) | Result |
+|---|---|
+| persistent send/receive ring started 5 times: 10 activation records with 100 B, correct partners, completion time from the wait or the events; persistent `Allreduce` started 3 times: MPI_T sums, algorithm from the init, completion from the request event | PASS |
+
+Library fix found by the repeated runs (fork, branch `mpit/request-events-pvars`): with `pml ucx` a receive that matches an
+unexpected message completes inside the posting call, so `recv_complete` was raised before `recv_start`; the tool could not attribute that
+message and a non-blocking collective lost 80 bytes in one run of three. The completion callback now leaves the event to the
+poster, which raises `recv_start`, `request_created` and `recv_complete` in the order of the request's life (done for
+`MPI_Irecv`; the blocking receive and `imrecv` keep the old order, which the tool does not depend on). The correctness checks were run three times in
+a row afterwards without a failure. Also: the check "request ended before the wait returned" compared two different clocks
+with 1 microsecond tolerance and failed sporadically; it now allows 100 microseconds (the mapping error of the event clock).
 
 ### 3.4 Not done yet
 

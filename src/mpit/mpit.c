@@ -343,6 +343,10 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
         /* request, msg_size, parent_comm, operation, algorithm, component, comm_size, root, level */
         int op = i32at(b, e->disp[3]), alg = i32at(b, e->disp[4]), comp = i32at(b, e->disp[5]);
         int level = i32at(b, e->disp[8]);
+        uint64_t alg_token = u64at(b, e->disp[0]);
+        if (alg_token && edumpi_tls_pinit && level >= 0 && level <= 2) {      /* a persistent collective: the algorithm is chosen at *_init */
+            edumpi_persist_set_alg((uintptr_t) alg_token, level, ((uint32_t) comp << 16) | (uint32_t) (alg & 0xFFFF));
+        }
         if (level < 0 || level > 2 || NULL == cur || !(cur->flags & EDUMPI_F_COLLECTIVE)) {
             return;
         }

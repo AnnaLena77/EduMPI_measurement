@@ -38,7 +38,9 @@ for r in range(n):
           all(x['flags'] & EVT and x['flags'] & HAS_DONE and x['done_ns'] >= x['start_ns'] for x in (a0, a1, b)),
           'flags A0=%s A1=%s B=%s' % (a0['flagnames'], a1['flagnames'], b['flagnames']))
     w = [x for x in recs[r] if x['function'] in ('MPI_Wait', 'MPI_Waitall')]
-    check(t + 'the request ended before the wait returned', a0['done_ns'] <= w[0]['end_ns'] + 1000)
+    # the end event is stamped with the library's clock and mapped to the tool's clock with an offset measured at start:
+    # the two agree within some microseconds, so allow 100 us
+    check(t + 'the request ended before the wait returned (within the clock mapping error)', a0['done_ns'] <= w[0]['end_ns'] + 100000)
     tot_sent += a1['send_bytes']
     tot_recv += a1['recv_bytes']
 check('A overlapped: total bytes sent by all ranks equal total bytes received', tot_sent == tot_recv, 'sent=%d recv=%d' % (tot_sent, tot_recv))

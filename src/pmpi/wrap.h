@@ -23,7 +23,8 @@ int64_t edumpi_wsum(const int *counts, const MPI_Datatype *types, int n);
 /* MPI_T backend (src/mpit/mpit.c) */
 extern int edumpi_mpit_active;                   /* 1 if the library offers the events and they are registered */
 extern _Thread_local edumpi_rec_t *edumpi_tls_cur;   /* record of the MPI call this thread is in */
-extern _Thread_local int edumpi_tls_op;          /* COLLTYPE of that call, -1 if not a collective */
+extern _Thread_local int edumpi_tls_op;
+extern _Thread_local int edumpi_tls_pinit;      /* 1 while the thread is inside a persistent collective *_init */          /* COLLTYPE of that call, -1 if not a collective */
 void edumpi_mpit_init(void);                     /* before PMPI_Init */
 void edumpi_mpit_after_init(void);               /* after PMPI_Init: register on MPI_COMM_WORLD / SELF */
 void edumpi_mpit_finalize(void);                 /* before PMPI_Finalize */
@@ -31,6 +32,16 @@ void edumpi_mpit_finalize(void);                 /* before PMPI_Finalize */
 /* record of an open non-blocking collective request (token = MPI_Request handle), NULL if none */
 edumpi_rec_t *edumpi_req_rec(uintptr_t token);
 int edumpi_req_fill(uintptr_t token, uint64_t when_ns, int partner, int64_t bytes, int is_recv);
+
+/* persistent requests: what MPI_Start needs to know about the request created by an *_init call */
+void edumpi_persist_add(MPI_Request req, MPI_Comm comm, int kind, int64_t sbytes, int64_t rbytes, int partner, int any_source,
+                        int coll_op);
+int edumpi_persist_get(MPI_Request req, MPI_Comm *comm, int *kind, int64_t *sbytes, int64_t *rbytes, int *partner,
+                       int *any_source, int *coll_op);
+void edumpi_persist_drop(MPI_Request req);
+/* the algorithm of a persistent collective is chosen at *_init; remember it for the activations */
+void edumpi_persist_alg(MPI_Request req, uint32_t out[3]);
+void edumpi_persist_set_alg(uintptr_t token, int level, uint32_t value);
 
 /* request tracking: a non-blocking call leaves its record open until the request completes */
 enum { EDUMPI_REQ_SEND = 0, EDUMPI_REQ_RECV = 1, EDUMPI_REQ_COLL = 2, EDUMPI_REQ_WIN = 3 };

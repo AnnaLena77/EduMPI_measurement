@@ -17,6 +17,7 @@ int edumpi_enabled;
 int edumpi_mpit_active;
 _Thread_local edumpi_rec_t *edumpi_tls_cur;
 _Thread_local int edumpi_tls_op = -1;
+_Thread_local int edumpi_tls_pinit = 0;
 
 /* ---------- datatype sizes ---------- */
 /* Handles of communicators and datatypes can be reused after a free; every free bumps this epoch and the
@@ -499,6 +500,172 @@ static void req_complete(const reqcopy_t *e, const MPI_Status *st, uint64_t when
     edumpi_complete(r);
 }
 
+/* ---------- persistent requests ---------- */
+typedef struct {
+    uintptr_t key;           /* handle; 0 free, 1 deleted */
+    MPI_Comm comm;
+    int kind, partner, any_source, coll_op;
+    int64_t sbytes, rbytes;
+    uint32_t alg[3];
+    int alg_pending;         /* algorithm events arrived before edumpi_persist_add */
+} persist_t;
+#define PERSIST_SLOTS 4096
+static persist_t persist[PERSIST_SLOTS];
+static pthread_mutex_t persist_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static persist_t *persist_find(uintptr_t key, int create)
+{
+    size_t h = (key >> 4) * 11400714819323198485ull % PERSIST_SLOTS, del = PERSIST_SLOTS;
+    for (size_t i = 0; i < PERSIST_SLOTS; ++i) {
+        size_t j = (h + i) % PERSIST_SLOTS;
+        if (persist[j].key == key) {
+            return &persist[j];
+        }
+        if (1 == persist[j].key && del == PERSIST_SLOTS) {
+            del = j;
+        }
+        if (0 == persist[j].key) {
+            return create ? &persist[del < PERSIST_SLOTS ? del : j] : NULL;
+        }
+    }
+    return create && del < PERSIST_SLOTS ? &persist[del] : NULL;
+}
+
+void edumpi_persist_add(MPI_Request req, MPI_Comm comm, int kind, int64_t sbytes, int64_t rbytes, int partner, int any_source,
+                        int coll_op)
+{
+    persist_t *p;
+    if (MPI_REQUEST_NULL == req) {
+        return;
+    }
+    pthread_mutex_lock(&persist_lock);
+    p = persist_find((uintptr_t) req, 1);
+    if (p) {
+        int keep = (p->key == (uintptr_t) req) && p->alg_pending;
+        uint32_t a[3] = {p->alg[0], p->alg[1], p->alg[2]};
+        memset(p, 0, sizeof(*p));
+        p->key = (uintptr_t) req; p->comm = comm; p->kind = kind; p->sbytes = sbytes; p->rbytes = rbytes;
+        p->partner = partner; p->any_source = any_source; p->coll_op = coll_op;
+        if (keep) {
+            memcpy(p->alg, a, sizeof(a));
+        }
+    }
+    pthread_mutex_unlock(&persist_lock);
+}
+
+void edumpi_persist_set_alg(uintptr_t token, int level, uint32_t value)
+{
+    persist_t *p;
+    if (level < 0 || level > 2) {
+        return;
+    }
+    pthread_mutex_lock(&persist_lock);
+    p = persist_find(token, 1);
+    if (p) {
+        if (p->key != token) {
+            memset(p, 0, sizeof(*p));
+            p->key = token;
+        }
+        p->alg[level] = value;
+        p->alg_pending = 1;
+    }
+    pthread_mutex_unlock(&persist_lock);
+}
+
+int edumpi_persist_get(MPI_Request req, MPI_Comm *comm, int *kind, int64_t *sbytes, int64_t *rbytes, int *partner,
+                       int *any_source, int *coll_op)
+{
+    persist_t *p;
+    int found = 0;
+    if (MPI_REQUEST_NULL == req) {
+        return 0;
+    }
+    pthread_mutex_lock(&persist_lock);
+    p = persist_find((uintptr_t) req, 0);
+    if (p) {
+        *comm = p->comm; *kind = p->kind; *sbytes = p->sbytes; *rbytes = p->rbytes; *partner = p->partner;
+        *any_source = p->any_source; *coll_op = p->coll_op;
+        found = 1;
+    }
+    pthread_mutex_unlock(&persist_lock);
+    return found;
+}
+
+void edumpi_persist_alg(MPI_Request req, uint32_t out[3])
+{
+    persist_t *p;
+    out[0] = out[1] = out[2] = 0;
+    pthread_mutex_lock(&persist_lock);
+    p = persist_find((uintptr_t) req, 0);
+    if (p) {
+        memcpy(out, p->alg, sizeof(p->alg));
+    }
+    pthread_mutex_unlock(&persist_lock);
+}
+
+void edumpi_persist_drop(MPI_Request req)
+{
+    persist_t *p;
+    pthread_mutex_lock(&persist_lock);
+    p = persist_find((uintptr_t) req, 0);
+    if (p) {
+        p->key = 1;
+    }
+    pthread_mutex_unlock(&persist_lock);
+}
+
+/* An activation of a persistent request is recorded like the non-blocking call it stands for; the record stays open
+   until a wait or test (or the completion events) finishes the request. */
+int MPI_Start(MPI_Request *request)
+{
+    MPI_Comm comm;
+    int kind, partner, any, op, rc;
+    int64_t sb, rb;
+    edumpi_rec_t *r_;
+    static uint16_t fid = 0xFFFF;
+
+    if (!edumpi_enabled || NULL == request || !edumpi_persist_get(*request, &comm, &kind, &sb, &rb, &partner, &any, &op)) {
+        return PMPI_Start(request);
+    }
+    {
+        MPI_Request handle = *request;
+        uint32_t fl = EDUMPI_F_PERSISTENT | (EDUMPI_REQ_COLL == kind ? EDUMPI_F_COLLECTIVE : 0) | (any ? EDUMPI_F_ANY_SOURCE : 0);
+        r_ = edumpi_rec_begin("MPI_Start", &fid, edumpi_cid(comm), fl);
+        if (r_) {
+            r_->send_bytes = sb;
+            r_->recv_bytes = rb;
+            r_->partner = partner;
+            r_->coll_op = op < 0 ? 0 : (uint32_t) op;
+            if (EDUMPI_REQ_COLL == kind) {
+                edumpi_persist_alg(handle, r_->coll_alg);
+            }
+        }
+        edumpi_tls_cur = r_;
+        edumpi_tls_op = EDUMPI_REQ_COLL == kind ? op : -1;
+        rc = PMPI_Start(request);
+        edumpi_tls_cur = NULL;
+        edumpi_tls_op = -1;
+        if (r_) {
+            r_->end_ns = edumpi_now_ns();
+            if (MPI_SUCCESS == rc) {
+                edumpi_req_add(handle, r_, comm, kind);
+            } else {
+                edumpi_complete(r_);
+            }
+        }
+    }
+    return rc;
+}
+
+int MPI_Startall(int count, MPI_Request reqs_in[])
+{
+    int rc = MPI_SUCCESS;
+    for (int i = 0; i < count && MPI_SUCCESS == rc; ++i) {
+        rc = MPI_Start(&reqs_in[i]);
+    }
+    return rc;
+}
+
 int MPI_Wait(MPI_Request *request, MPI_Status *status)
 {
     reqcopy_t e;
@@ -726,9 +893,13 @@ int MPI_Testsome(int incount, MPI_Request reqarr[], int *outcount, int indices[]
     return rc;
 }
 
+
 int MPI_Request_free(MPI_Request *request)
 {
     reqcopy_t e;
+    if (edumpi_enabled && request) {
+        edumpi_persist_drop(*request);
+    }
     if (edumpi_enabled && request && req_take(*request, &e)) {
         e.rec->request_token = 0;
         e.rec->flags |= EDUMPI_F_NOT_COMPLETED;   /* freed without observing completion */
