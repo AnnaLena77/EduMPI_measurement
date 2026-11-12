@@ -286,7 +286,7 @@ Review of 2026-11-12 against the WG slides (details and the planned work: sectio
 | WG idea | State |
 |---|---|
 | Set to track handles: created / freeing events, registration inside the handler | communicators: used and tested (event handles are allocated in the `communicator_created` callback). Requests: `REQUEST_CREATED` / `REQUEST_FREEING` and a request-bound PVAR bound in the handler, tested for ob1 (section 3.14) |
-| Set for request states: activated, completed, cancelled, freed | activated and completed for PML requests of ob1 and ucx (`ompi.pml_*_start` / `_complete`); cancelled and freed only as ob1 events; collective requests of libnbc now have activated/completed events (generic REQUEST set, WP-B2) |
+| Set for request states: activated, completed, cancelled, freed | all four as generic events (`request_activated/completed/cancelled`, `request_freeing`): completed/activated for libnbc, cancelled for ob1 and ucx p2p (section 3.17); PML requests also report the envelope with `ompi.pml_*_start` / `_complete` |
 | TRANSFER set and tracking the p2p messages of a collective | blocking collectives: byte sums and partner bitmap from internal messages. Non-blocking collectives: byte sums, partner bitmap and completion time from the `parent` token and the REQUEST set (WP-B2, section 3.13) |
 | Request lifetime problem (binding to a short-lived request) | solved in the library for libnbc and ob1 (sections 3.14, 3.15). In the tool avoided for point-to-point requests by correlating events through the request token, including a request that completes before the call returns. The test loop that would prove it (10^6 one-byte operations) is not written |
 | Dummy requests, token rules | observed (token 0 for operations without an own request, tokens are reused) but only described in the plan |
@@ -416,6 +416,19 @@ poster, which raises `recv_start`, `request_created` and `recv_complete` in the 
 `MPI_Irecv`; the blocking receive and `imrecv` keep the old order, which the tool does not depend on). The correctness checks were run three times in
 a row afterwards without a failure. Also: the check "request ended before the wait returned" compared two different clocks
 with 1 microsecond tolerance and failed sporadically; it now allows 100 microseconds (the mapping error of the event clock).
+
+### 3.17 Request states of the entity set: cancelled, freed; the TRANSFER set
+
+`ompi.mpi.request_cancelled` (generic, bound to a communicator; ob1 receives, ucx receives and sends) completes the request states of
+WG slide 7 together with `request_activated`, `request_completed` and `request_freeing` (= REQUEST_FREED). Test
+`mpi_t_event_request_cancel` (one process, job 10468): created, cancelled and freeing events with the same token in this order,
+status cancelled, on ob1 and ucx: PASS. The tool does not use the cancelled event yet.
+
+TRANSFER set (slide 4): no generic events were added. Data movement is visible only inside a PML that does its own protocol: ob1
+reports `transfer_begin`, `transfer` and `transfer_end` per request (used by the tool for the late-receiver time, section 3.9);
+the ucx PML hands the message to UCX and has no steps to report, so a portable TRANSFER set cannot be provided there. The plan
+keeps the semantic names (`REQUEST_TRANSFER_BEGIN/STEP/END`) as an optional set that an implementation supports completely or not
+at all, which is what the WG asks for; the tool's name table lists `TRANSFER_STEP` as optional.
 
 ### 3.4 Not done yet
 
