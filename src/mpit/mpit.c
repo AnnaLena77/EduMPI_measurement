@@ -84,6 +84,7 @@ typedef struct { uint64_t token; edumpi_rec_t *rec; int64_t t_act; int got_trans
 #define ACT_SLOTS 4096
 static act_t acts[ACT_SLOTS];
 static pthread_mutex_t act_lock = PTHREAD_MUTEX_INITIALIZER;
+static volatile int n_acts;          /* live entries: lets match/transfer/complete events skip the lock when 0 */
 
 static act_t *act_find(uint64_t token, int create)
 {
@@ -162,11 +163,12 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
             }
             return;
         }
-        if (token > 1) {
+        if (token > 1 && n_acts > 0) {
             act_t *a;
             pthread_mutex_lock(&act_lock);
             if ((a = act_find(token, 0)) != NULL) {
                 a->token = 1;                               /* request finished: forget it */
+                n_acts--;
             }
             pthread_mutex_unlock(&act_lock);
         }
@@ -188,14 +190,19 @@ static void cb_pml(MPI_T_event_instance inst, MPI_T_event_registration reg, MPI_
     if (EV_ACTIVATE == kind || EV_MATCH == kind || EV_TRANSFER == kind) {
         uint64_t token = u64at(b, e->disp[0]);
         act_t *a;
+        if (EV_ACTIVATE != kind && 0 == n_acts) {
+            return;                                          /* nothing in flight that could be late */
+        }
         MPI_T_event_get_timestamp(inst, &ts);
         pthread_mutex_lock(&act_lock);
         if (EV_ACTIVATE == kind) {
             if (token > 1 && (a = act_find(token, 0)) != NULL) {
                 a->token = 1;       /* request structures are recycled: drop a stale entry of an earlier use */
+                n_acts--;
             }
             if (cur && !(cur->flags & EDUMPI_F_COLLECTIVE) && token > 1 && (a = act_find(token, 1))) {
                 a->token = token;
+                n_acts++;
                 a->rec = cur;
                 a->t_act = (int64_t) ts;
                 a->got_transfer = 0;

@@ -16,12 +16,13 @@ make CC=mpicc libedumpi.so bench 2>&1 | grep -E "error|warning" | head
 test -f libedumpi.so || { echo BUILD FAILED; exit 1; }
 mkdir -p run && cd run
 for pml in ucx ob1; do
-  for mode in none pmpi mpit; do
+  for mode in none pmpi mpit mpit-fast; do
     for rep in 1 2 3; do
       case $mode in
         none) ENVS="" ;;
         pmpi) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_MPIT=0 -x EDUMPI_LOG_DIR=." ;;
         mpit) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=." ;;
+        mpit-fast) ENVS="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=. --mca opal_mca_base_event_fast_clock 1" ;;
       esac
       echo -n "$pml $mode run$rep: "
       mpirun --map-by ppr:2:node --mca pml $pml $ENVS ../bench 20000 2>&1 | grep RESULT

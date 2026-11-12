@@ -6,6 +6,7 @@
  */
 #define _GNU_SOURCE
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,14 +19,33 @@ _Thread_local edumpi_rec_t *edumpi_tls_cur;
 _Thread_local int edumpi_tls_op = -1;
 
 /* ---------- datatype sizes ---------- */
+/* Handles of communicators and datatypes can be reused after a free; every free bumps this epoch and the
+   per-thread caches below are valid only for the epoch they were filled in. */
+static _Atomic unsigned cache_epoch = 1;
+
+typedef struct { MPI_Datatype dt; int size; unsigned epoch; } tcache_t;
+static _Thread_local tcache_t tcache[8];
+
 int64_t edumpi_tsize(MPI_Datatype dt)
 {
     int sz = 0;
+    unsigned ep = atomic_load_explicit(&cache_epoch, memory_order_relaxed);
+    tcache_t *e = &tcache[((uintptr_t) dt >> 4) & 7];
     if (MPI_DATATYPE_NULL == dt) {
         return 0;
     }
+    if (e->dt == dt && e->epoch == ep) {
+        return e->size;
+    }
     PMPI_Type_size(dt, &sz);
+    e->dt = dt; e->size = sz; e->epoch = ep;
     return sz;
+}
+
+int MPI_Type_free(MPI_Datatype *dt)
+{
+    atomic_fetch_add(&cache_epoch, 1);
+    return PMPI_Type_free(dt);
 }
 
 int64_t edumpi_vsum(const int *counts, int n, MPI_Datatype dt)
@@ -139,31 +159,51 @@ static void fill_world(cobj_t *c, MPI_Group g)
     free(in);
 }
 
-int edumpi_crank(MPI_Comm comm)
+typedef struct { MPI_Comm comm; unsigned epoch; uint16_t id; int rank, size; const int *world; } ccache_t;
+static _Thread_local ccache_t ccache;
+
+/* fills the per-thread entry from the shared cache (under the lock); valid until a communicator is freed */
+static ccache_t *ccache_get(MPI_Comm comm)
 {
-    int v;
+    unsigned ep = atomic_load_explicit(&cache_epoch, memory_order_relaxed);
+    if (ccache.comm == comm && ccache.epoch == ep) {
+        return &ccache;
+    }
     pthread_mutex_lock(&cache_lock);
     cobj_t *c = comm_obj(comm);
-    v = c ? c->rank : -1;
+    if (!c) {
+        pthread_mutex_unlock(&cache_lock);
+        return NULL;
+    }
+    ccache.comm = comm; ccache.epoch = ep; ccache.id = c->id; ccache.rank = c->rank; ccache.size = c->size;
+    ccache.world = c->world;
     pthread_mutex_unlock(&cache_lock);
-    return v;
+    return &ccache;
 }
+
+int edumpi_crank(MPI_Comm comm)
+{
+    ccache_t *c = ccache_get(comm);
+    return c ? c->rank : -1;
+}
+
 
 int edumpi_csize(MPI_Comm comm)
 {
-    int v;
-    pthread_mutex_lock(&cache_lock);
-    cobj_t *c = comm_obj(comm);
-    v = c ? c->size : 0;
-    pthread_mutex_unlock(&cache_lock);
-    return v;
+    ccache_t *c = ccache_get(comm);
+    return c ? c->size : 0;
 }
+
 
 uint16_t edumpi_cid(MPI_Comm comm)
 {
     uint16_t v = EDUMPI_NO_COMM;
     if (MPI_COMM_NULL == comm) {
         return v;
+    }
+    {
+        ccache_t *c = ccache_get(comm);
+        return c ? c->id : v;
     }
     pthread_mutex_lock(&cache_lock);
     cobj_t *c = comm_obj(comm);
@@ -179,6 +219,12 @@ int edumpi_world(MPI_Comm comm, int rank)
     int v = -1;
     if (rank < 0 || MPI_COMM_NULL == comm) {
         return -1;
+    }
+    {
+        ccache_t *c = ccache_get(comm);
+        if (c && c->world && rank < c->size) {
+            return c->world[rank];
+        }
     }
     pthread_mutex_lock(&cache_lock);
     cobj_t *c = comm_obj(comm);
@@ -196,6 +242,7 @@ int edumpi_world(MPI_Comm comm, int rank)
     }
     if (c && c->world && rank < c->size) {
         v = c->world[rank];
+        ccache.world = c->world;      /* the thread cache now sees the translation table */
     }
     pthread_mutex_unlock(&cache_lock);
     return v;
@@ -252,6 +299,7 @@ int edumpi_wworld(MPI_Win win, int rank)
 
 int MPI_Comm_free(MPI_Comm *comm)
 {
+    atomic_fetch_add(&cache_epoch, 1);
     if (edumpi_enabled && comm && MPI_COMM_NULL != *comm) {
         pthread_mutex_lock(&cache_lock);
         cobj_t *c = find_slot(comms, (uintptr_t) *comm, 0);
@@ -280,40 +328,63 @@ int MPI_Win_free(MPI_Win *win)
     return PMPI_Win_free(win);
 }
 
-/* ---------- request table ---------- */
+/* ---------- request table ----------
+ * Lock-free open addressing: a slot is claimed with a CAS on the key (0 free, 1 deleted, 2 being filled), the other
+ * fields are written and the key is published last with release semantics. */
 typedef struct {
-    uintptr_t key;      /* MPI_Request handle; 0 free, 1 deleted */
+    _Atomic uintptr_t key;      /* MPI_Request handle */
     edumpi_rec_t *rec;
     MPI_Comm comm;
     int kind;
 } reqent_t;
 
-static reqent_t reqs[CACHE_SLOTS * 4];
 #define REQ_SLOTS (CACHE_SLOTS * 4)
-static pthread_mutex_t req_lock = PTHREAD_MUTEX_INITIALIZER;
+static reqent_t reqs[REQ_SLOTS];
+static pthread_mutex_t req_lock = PTHREAD_MUTEX_INITIALIZER;   /* only for the stash below */
 
-static reqent_t *req_slot(uintptr_t key, int create)
+static size_t req_hash(uintptr_t key) { return (key >> 4) * 11400714819323198485ull % REQ_SLOTS; }
+
+/* find the slot holding key (acquire), NULL if none */
+static reqent_t *req_find(uintptr_t key)
 {
-    size_t h = (key >> 4) * 11400714819323198485ull % REQ_SLOTS, first_del = REQ_SLOTS;
+    size_t h = req_hash(key);
     for (size_t i = 0; i < REQ_SLOTS; ++i) {
-        size_t j = (h + i) % REQ_SLOTS;
-        if (reqs[j].key == key) {
-            return &reqs[j];
+        reqent_t *e = &reqs[(h + i) % REQ_SLOTS];
+        uintptr_t k = atomic_load_explicit(&e->key, memory_order_acquire);
+        if (k == key) {
+            return e;
         }
-        if (1 == reqs[j].key && first_del == REQ_SLOTS) {
-            first_del = j;
-        }
-        if (0 == reqs[j].key) {
-            return create ? &reqs[first_del < REQ_SLOTS ? first_del : j] : NULL;
+        if (0 == k) {
+            return NULL;
         }
     }
-    return create && first_del < REQ_SLOTS ? &reqs[first_del] : NULL;
+    return NULL;
+}
+
+static int req_insert(uintptr_t key, edumpi_rec_t *rec, MPI_Comm comm, int kind)
+{
+    size_t h = req_hash(key);
+    for (size_t i = 0; i < REQ_SLOTS; ++i) {
+        reqent_t *e = &reqs[(h + i) % REQ_SLOTS];
+        uintptr_t k = atomic_load_explicit(&e->key, memory_order_relaxed);
+        if (k == key) {                 /* stale entry of an earlier use of the same handle: replace it */
+            e->rec = rec; e->comm = comm; e->kind = kind;
+            return 1;
+        }
+        if ((0 == k || 1 == k) && atomic_compare_exchange_strong(&e->key, &k, (uintptr_t) 2)) {
+            e->rec = rec; e->comm = comm; e->kind = kind;
+            atomic_store_explicit(&e->key, key, memory_order_release);
+            return 1;
+        }
+    }
+    return 0;
 }
 
 /* completion events that arrived before the call that started the request had returned */
 typedef struct { uintptr_t token; uint64_t when; int partner, is_recv; int64_t bytes; } stash_t;
 static stash_t stash[256];
 static unsigned stash_next;
+static _Atomic int stash_count;
 
 static void apply_fill(edumpi_rec_t *r, uint64_t when, int partner, int64_t bytes, int is_recv)
 {
@@ -329,46 +400,44 @@ static void apply_fill(edumpi_rec_t *r, uint64_t when, int partner, int64_t byte
 
 int edumpi_req_fill(uintptr_t token, uint64_t when_ns, int partner, int64_t bytes, int is_recv)
 {
-    reqent_t *e;
-    int applied = 0;
-    pthread_mutex_lock(&req_lock);
-    e = req_slot(token, 0);
+    reqent_t *e = req_find(token);
     if (e && e->rec) {
         apply_fill(e->rec, when_ns, partner, bytes, is_recv);
-        applied = 1;
-    } else {
+        return 1;
+    }
+    pthread_mutex_lock(&req_lock);
+    {
         stash_t *s = &stash[stash_next++ % 256];
+        if (0 == s->token) {
+            atomic_fetch_add(&stash_count, 1);
+        }
         s->token = token; s->when = when_ns; s->partner = partner; s->bytes = bytes; s->is_recv = is_recv;
     }
     pthread_mutex_unlock(&req_lock);
-    return applied;
+    return 0;
 }
 
 void edumpi_req_add(MPI_Request req, edumpi_rec_t *rec, MPI_Comm comm, int kind)
 {
-    reqent_t *e;
     if (MPI_REQUEST_NULL == req || NULL == rec) {
         edumpi_complete(rec);
         return;
     }
-    pthread_mutex_lock(&req_lock);
-    e = req_slot((uintptr_t) req, 1);
-    if (e) {
-        e->key = (uintptr_t) req;
-        e->rec = rec;
-        e->comm = comm;
-        e->kind = kind;
-        rec->request_token = (uintptr_t) req;
-        for (unsigned i = 0; i < 256; ++i) {      /* an event for this request came first */
+    rec->request_token = (uintptr_t) req;
+    if (!req_insert((uintptr_t) req, rec, comm, kind)) {   /* table full: finish the record now */
+        edumpi_complete(rec);
+        return;
+    }
+    if (atomic_load_explicit(&stash_count, memory_order_relaxed) > 0) {   /* an event for this request came first */
+        pthread_mutex_lock(&req_lock);
+        for (unsigned i = 0; i < 256; ++i) {
             if (stash[i].token == (uintptr_t) req) {
                 apply_fill(rec, stash[i].when, stash[i].partner, stash[i].bytes, stash[i].is_recv);
                 stash[i].token = 0;
+                atomic_fetch_sub(&stash_count, 1);
             }
         }
-    }
-    pthread_mutex_unlock(&req_lock);
-    if (!e) {   /* table full: finish the record now, without completion data */
-        edumpi_complete(rec);
+        pthread_mutex_unlock(&req_lock);
     }
 }
 
@@ -382,36 +451,28 @@ void edumpi_finish_after_call(edumpi_rec_t *r, MPI_Comm comm, int win)
 }
 
 /* take the entry out of the table (returns 1 and copies it if found) */
-static int req_take(MPI_Request req, reqent_t *out)
+typedef struct { uintptr_t key; edumpi_rec_t *rec; MPI_Comm comm; int kind; } reqcopy_t;
+
+static int req_take(MPI_Request req, reqcopy_t *out)
 {
-    int found = 0;
     reqent_t *e;
-    if (MPI_REQUEST_NULL == req) {
+    if (MPI_REQUEST_NULL == req || NULL == (e = req_find((uintptr_t) req))) {
         return 0;
     }
-    pthread_mutex_lock(&req_lock);
-    e = req_slot((uintptr_t) req, 0);
-    if (e) {
-        *out = *e;
-        e->key = 1;
-        found = 1;
-    }
-    pthread_mutex_unlock(&req_lock);
-    return found;
+    out->key = (uintptr_t) req; out->rec = e->rec; out->comm = e->comm; out->kind = e->kind;
+    atomic_store_explicit(&e->key, (uintptr_t) 1, memory_order_release);
+    return 1;
 }
 
 static void req_drop(uintptr_t key)
 {
-    reqent_t *e;
-    pthread_mutex_lock(&req_lock);
-    e = req_slot(key, 0);
+    reqent_t *e = req_find(key);
     if (e) {
-        e->key = 1;
+        atomic_store_explicit(&e->key, (uintptr_t) 1, memory_order_release);
     }
-    pthread_mutex_unlock(&req_lock);
 }
 
-static void req_complete(const reqent_t *e, const MPI_Status *st, uint64_t when)
+static void req_complete(const reqcopy_t *e, const MPI_Status *st, uint64_t when)
 {
     edumpi_rec_t *r = e->rec;
     int from_event = (r->flags & EDUMPI_F_EVENT_DONE) != 0;
@@ -434,7 +495,7 @@ static void req_complete(const reqent_t *e, const MPI_Status *st, uint64_t when)
 
 int MPI_Wait(MPI_Request *request, MPI_Status *status)
 {
-    reqent_t e;
+    reqcopy_t e;
     int have = 0, rc;
     MPI_Status local;
     edumpi_rec_t *w = NULL;
@@ -458,21 +519,18 @@ int MPI_Wait(MPI_Request *request, MPI_Status *status)
 
 int MPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
 {
-    reqent_t e;
+    reqcopy_t e;
     int have = 0, rc;
     MPI_Status local;
+    reqent_t *p;
+
     if (!edumpi_enabled || NULL == request) {
         return PMPI_Test(request, flag, status);
     }
-    pthread_mutex_lock(&req_lock);
-    {
-        reqent_t *p = req_slot((uintptr_t) *request, 0);
-        if (p) {
-            e = *p;
-            have = 1;
-        }
+    if (MPI_REQUEST_NULL != *request && (p = req_find((uintptr_t) *request)) != NULL) {
+        e.key = (uintptr_t) *request; e.rec = p->rec; e.comm = p->comm; e.kind = p->kind;
+        have = 1;
     }
-    pthread_mutex_unlock(&req_lock);
     rc = PMPI_Test(request, flag, (status == MPI_STATUS_IGNORE && have) ? &local : status);
     if (have && flag && *flag) {
         uint64_t t = edumpi_now_ns();
@@ -482,173 +540,182 @@ int MPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
     return rc;
 }
 
-/* arrays: remember the handles before the call (they become MPI_REQUEST_NULL) */
-static reqent_t *snapshot(int count, MPI_Request *reqs_in)
+/* arrays: remember the entries before the call (the handles become MPI_REQUEST_NULL); small counts need no heap */
+#define SNAP_STACK 32
+typedef struct { reqcopy_t stack[SNAP_STACK]; reqcopy_t *v; int heap; } snap_t;
+
+static void snapshot(snap_t *s, int count, MPI_Request *reqs_in)
 {
-    reqent_t *s = calloc(count > 0 ? count : 1, sizeof(*s));
-    if (!s) {
-        return NULL;
+    s->heap = count > SNAP_STACK;
+    s->v = s->heap ? calloc(count, sizeof(reqcopy_t)) : s->stack;
+    if (!s->v) {
+        return;
     }
-    pthread_mutex_lock(&req_lock);
+    memset(s->v, 0, sizeof(reqcopy_t) * (size_t) count);
     for (int i = 0; i < count; ++i) {
-        reqent_t *p = MPI_REQUEST_NULL == reqs_in[i] ? NULL : req_slot((uintptr_t) reqs_in[i], 0);
+        reqent_t *p = MPI_REQUEST_NULL == reqs_in[i] ? NULL : req_find((uintptr_t) reqs_in[i]);
         if (p) {
-            s[i] = *p;
+            s->v[i].key = (uintptr_t) reqs_in[i]; s->v[i].rec = p->rec; s->v[i].comm = p->comm; s->v[i].kind = p->kind;
         }
     }
-    pthread_mutex_unlock(&req_lock);
-    return s;
 }
 
-static void finish_idx(reqent_t *s, int i, const MPI_Status *st, uint64_t t)
+static void snap_free(snap_t *s)
 {
-    if (s && s[i].key > 1) {
-        req_drop(s[i].key);
-        req_complete(&s[i], st, t);
+    if (s->heap) {
+        free(s->v);
+    }
+}
+
+static void finish_idx(snap_t *s, int i, const MPI_Status *st, uint64_t t)
+{
+    if (s->v && s->v[i].key > 1) {
+        req_drop(s->v[i].key);
+        req_complete(&s->v[i], st, t);
     }
 }
 
 int MPI_Waitall(int count, MPI_Request reqarr[], MPI_Status statuses[])
 {
-    reqent_t *s;
+    snap_t s;
     int rc;
-    MPI_Status *st = statuses;
+    MPI_Status stack_st[SNAP_STACK], *st = statuses;
     if (!edumpi_enabled || count <= 0) {
         return PMPI_Waitall(count, reqarr, statuses);
     }
-    s = snapshot(count, reqarr);
+    snapshot(&s, count, reqarr);
     if (statuses == MPI_STATUSES_IGNORE) {
-        st = malloc(sizeof(MPI_Status) * count);
+        st = count <= SNAP_STACK ? stack_st : malloc(sizeof(MPI_Status) * count);
     }
     rc = PMPI_Waitall(count, reqarr, st ? st : statuses);
-    {
+    if (st) {
         uint64_t t = edumpi_now_ns();
-        for (int i = 0; i < count && st; ++i) {
-            finish_idx(s, i, &st[i], t);
+        for (int i = 0; i < count; ++i) {
+            finish_idx(&s, i, &st[i], t);
         }
     }
-    if (st != statuses) {
+    if (st != statuses && st != stack_st) {
         free(st);
     }
-    free(s);
+    snap_free(&s);
     return rc;
 }
 
 int MPI_Waitany(int count, MPI_Request reqarr[], int *index, MPI_Status *status)
 {
-    reqent_t *s;
+    snap_t s;
     int rc;
     MPI_Status local;
     if (!edumpi_enabled || count <= 0) {
         return PMPI_Waitany(count, reqarr, index, status);
     }
-    s = snapshot(count, reqarr);
+    snapshot(&s, count, reqarr);
     rc = PMPI_Waitany(count, reqarr, index, status == MPI_STATUS_IGNORE ? &local : status);
     if (*index >= 0 && *index < count) {
-        finish_idx(s, *index, status == MPI_STATUS_IGNORE ? &local : status, edumpi_now_ns());
+        finish_idx(&s, *index, status == MPI_STATUS_IGNORE ? &local : status, edumpi_now_ns());
     }
-    free(s);
+    snap_free(&s);
     return rc;
 }
 
 int MPI_Waitsome(int incount, MPI_Request reqarr[], int *outcount, int indices[], MPI_Status statuses[])
 {
-    reqent_t *s;
+    snap_t s;
     int rc;
-    MPI_Status *st = statuses;
+    MPI_Status stack_st[SNAP_STACK], *st = statuses;
     if (!edumpi_enabled || incount <= 0) {
         return PMPI_Waitsome(incount, reqarr, outcount, indices, statuses);
     }
-    s = snapshot(incount, reqarr);
+    snapshot(&s, incount, reqarr);
     if (statuses == MPI_STATUSES_IGNORE) {
-        st = malloc(sizeof(MPI_Status) * incount);
+        st = incount <= SNAP_STACK ? stack_st : malloc(sizeof(MPI_Status) * incount);
     }
     rc = PMPI_Waitsome(incount, reqarr, outcount, indices, st ? st : statuses);
     if (st && *outcount > 0) {
         uint64_t t = edumpi_now_ns();
         for (int k = 0; k < *outcount; ++k) {
-            finish_idx(s, indices[k], &st[k], t);
+            finish_idx(&s, indices[k], &st[k], t);
         }
     }
-    if (st != statuses) {
+    if (st != statuses && st != stack_st) {
         free(st);
     }
-    free(s);
+    snap_free(&s);
     return rc;
 }
 
 int MPI_Testall(int count, MPI_Request reqarr[], int *flag, MPI_Status statuses[])
 {
-    reqent_t *s;
+    snap_t s;
     int rc;
-    MPI_Status *st = statuses;
+    MPI_Status stack_st[SNAP_STACK], *st = statuses;
     if (!edumpi_enabled || count <= 0) {
         return PMPI_Testall(count, reqarr, flag, statuses);
     }
-    s = snapshot(count, reqarr);
+    snapshot(&s, count, reqarr);
     if (statuses == MPI_STATUSES_IGNORE) {
-        st = malloc(sizeof(MPI_Status) * count);
+        st = count <= SNAP_STACK ? stack_st : malloc(sizeof(MPI_Status) * count);
     }
     rc = PMPI_Testall(count, reqarr, flag, st ? st : statuses);
     if (*flag && st) {
         uint64_t t = edumpi_now_ns();
         for (int i = 0; i < count; ++i) {
-            finish_idx(s, i, &st[i], t);
+            finish_idx(&s, i, &st[i], t);
         }
     }
-    if (st != statuses) {
+    if (st != statuses && st != stack_st) {
         free(st);
     }
-    free(s);
+    snap_free(&s);
     return rc;
 }
 
 int MPI_Testany(int count, MPI_Request reqarr[], int *index, int *flag, MPI_Status *status)
 {
-    reqent_t *s;
+    snap_t s;
     int rc;
     MPI_Status local;
     if (!edumpi_enabled || count <= 0) {
         return PMPI_Testany(count, reqarr, index, flag, status);
     }
-    s = snapshot(count, reqarr);
+    snapshot(&s, count, reqarr);
     rc = PMPI_Testany(count, reqarr, index, flag, status == MPI_STATUS_IGNORE ? &local : status);
     if (*flag && *index >= 0 && *index < count) {
-        finish_idx(s, *index, status == MPI_STATUS_IGNORE ? &local : status, edumpi_now_ns());
+        finish_idx(&s, *index, status == MPI_STATUS_IGNORE ? &local : status, edumpi_now_ns());
     }
-    free(s);
+    snap_free(&s);
     return rc;
 }
 
 int MPI_Testsome(int incount, MPI_Request reqarr[], int *outcount, int indices[], MPI_Status statuses[])
 {
-    reqent_t *s;
+    snap_t s;
     int rc;
-    MPI_Status *st = statuses;
+    MPI_Status stack_st[SNAP_STACK], *st = statuses;
     if (!edumpi_enabled || incount <= 0) {
         return PMPI_Testsome(incount, reqarr, outcount, indices, statuses);
     }
-    s = snapshot(incount, reqarr);
+    snapshot(&s, incount, reqarr);
     if (statuses == MPI_STATUSES_IGNORE) {
-        st = malloc(sizeof(MPI_Status) * incount);
+        st = incount <= SNAP_STACK ? stack_st : malloc(sizeof(MPI_Status) * incount);
     }
     rc = PMPI_Testsome(incount, reqarr, outcount, indices, st ? st : statuses);
     if (st && *outcount > 0) {
         uint64_t t = edumpi_now_ns();
         for (int k = 0; k < *outcount; ++k) {
-            finish_idx(s, indices[k], &st[k], t);
+            finish_idx(&s, indices[k], &st[k], t);
         }
     }
-    if (st != statuses) {
+    if (st != statuses && st != stack_st) {
         free(st);
     }
-    free(s);
+    snap_free(&s);
     return rc;
 }
 
 int MPI_Request_free(MPI_Request *request)
 {
-    reqent_t e;
+    reqcopy_t e;
     if (edumpi_enabled && request && req_take(*request, &e)) {
         e.rec->request_token = 0;
         e.rec->flags |= EDUMPI_F_NOT_COMPLETED;   /* freed without observing completion */

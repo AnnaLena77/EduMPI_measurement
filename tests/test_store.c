@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <string.h>
 
 #include "../src/core/store.h"
@@ -56,6 +57,21 @@ int main(int argc, char **argv)
     total = (uint64_t) nthreads * per_thread;
 
     edumpi_store_init(3, 8, "testnode", edumpi_file_sink_new(dir), 20);
+    {   /* clock: the (TSC based) tool clock must follow CLOCK_REALTIME while the monitor thread renews the anchor */
+        int64_t worst = 0;
+        for (int i = 0; i < 40; ++i) {
+            struct timespec ts, d = {0, 50000000};
+            uint64_t a = edumpi_now_ns();
+            clock_gettime(CLOCK_REALTIME, &ts);
+            uint64_t b = edumpi_now_ns();
+            int64_t diff = (int64_t) ((a + b) / 2) - (int64_t) ((uint64_t) ts.tv_sec * 1000000000ull + (uint64_t) ts.tv_nsec);
+            if (diff < 0) diff = -diff;
+            if (diff > worst) worst = diff;
+            nanosleep(&d, NULL);
+        }
+        printf("clock: worst difference to CLOCK_REALTIME over 2 s: %lld ns\n", (long long) worst);
+        if (worst > 100000) { printf("FAIL: clock\n"); return 1; }
+    }
     for (long i = 0; i < nthreads; ++i) pthread_create(&th[i], NULL, worker, (void *) i);
     for (long i = 0; i < nthreads; ++i) pthread_join(th[i], NULL);
     for (int i = 0; i < 4096; ++i) edumpi_complete(open_slots[i]);   /* the rest */
