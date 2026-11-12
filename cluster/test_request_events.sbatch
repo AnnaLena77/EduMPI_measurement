@@ -16,9 +16,12 @@ make -C $TREE/ompi/test/t mpi_t_event_request_state 2>&1 | tail -n 2
 make -C $TREE/ompi/test/t mpi_t_event_request_handle 2>&1 | tail -n 1
 T=$TREE/ompi/test/t/mpi_t_event_request_state
 TH=$TREE/ompi/test/t/mpi_t_event_request_handle
+TC=$TREE/ompi/test/t/mpi_t_pvar_coll_request
+make -C $TREE/ompi/test/t mpi_t_pvar_coll_request 2>&1 | tail -n 1
 for pml in ob1 ucx; do
-  echo "=== request state test, pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $T 2>&1 | grep -E "PASS|FAIL|RESULT|INFO|SKIP" | sort | uniq -c | sort -rn | head -n 14
-  echo "=== request handle (lifetime) test, pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $TH 200000 2>&1 | grep -E "PASS|FAIL|RESULT|INFO|SKIP" | sort | uniq -c | sort -rn | head -n 14
+  echo "=== request state test, pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $T 2>&1 | grep -E "PASS|FAIL|RESULT|INFO|SKIP" | sort | uniq -c | sort -rn | head -n 30
+  echo "=== request-bound PVARs of non-blocking collectives, pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $TC 2>&1 | grep -E "PASS|FAIL|RESULT|SKIP" | sort | uniq -c | sort -rn | head -n 30
+  echo "=== request handle (lifetime) test, pml $pml"; mpirun --map-by ppr:2:node --mca pml $pml $TH 200000 2>&1 | grep -E "PASS|FAIL|RESULT|INFO|SKIP" | sort | uniq -c | sort -rn | head -n 30
 done
 echo "=== singleton lifetime test"; $TH 200000; echo "exit $?"
 echo DONE

@@ -288,7 +288,7 @@ Review of 2026-11-12 against the WG slides (details and the planned work: sectio
 | Set to track handles: created / freeing events, registration inside the handler | communicators: used and tested (event handles are allocated in the `communicator_created` callback). Requests: `REQUEST_CREATED` / `REQUEST_FREEING` and a request-bound PVAR bound in the handler, tested for ob1 (section 3.14) |
 | Set for request states: activated, completed, cancelled, freed | activated and completed for PML requests of ob1 and ucx (`ompi.pml_*_start` / `_complete`); cancelled and freed only as ob1 events; collective requests of libnbc now have activated/completed events (generic REQUEST set, WP-B2) |
 | TRANSFER set and tracking the p2p messages of a collective | blocking collectives: byte sums and partner bitmap from internal messages. Non-blocking collectives: byte sums, partner bitmap and completion time from the `parent` token and the REQUEST set (WP-B2, section 3.13) |
-| Request lifetime problem (binding to a short-lived request) | avoided for point-to-point requests by correlating events through the request token, including a request that completes before the call returns. The test loop that would prove it (10^6 one-byte operations) is not written |
+| Request lifetime problem (binding to a short-lived request) | solved in the library for libnbc and ob1 (sections 3.14, 3.15). In the tool avoided for point-to-point requests by correlating events through the request token, including a request that completes before the call returns. The test loop that would prove it (10^6 one-byte operations) is not written |
 | Dummy requests, token rules | observed (token 0 for operations without an own request, tokens are reused) but only described in the plan |
 | Semantic set names | Open MPI names are hard-coded in the tool; no name table |
 
@@ -375,6 +375,26 @@ value of its previous use; (3) an eager send never updates `req_bytes_delivered`
 size). Not done: a request-bound PVAR for ucx and for collective requests, `REQ_INTERNAL_MESSAGES` and `REQ_WAIT_TIME`, the
 tool using bound PVARs (it uses the tokens of the events), the rule "a tool must accept a handle it never saw
 created" in the tool, and the other request kinds (one-sided, I/O, generalized, partitioned).
+
+### 3.15 Request-bound PVARs for non-blocking collectives (the slide-5 scenario)
+
+`coll_libnbc_request_messages` and `coll_libnbc_request_bytes` (fork, branch `mpit/request-events-pvars`): per peer
+counters of what the schedule of a libnbc request sent, bound to the `MPI_Request`; allocated in the handler of
+`ompi.mpi.request_created`, read in the handler of `ompi.mpi.request_freeing`. This is the way the WG slides propose
+for tracking the internal messages of a non-blocking collective (slide 5: today EduMPI uses
+`pml_monitoring_messages_count`, which is bound to the communicator and cannot separate overlapping operations).
+
+| Test (job 10457, `mpi_t_pvar_coll_request`, 2 nodes x 2 ranks, ob1 and ucx) | Result |
+|---|---|
+| two overlapping `Iallreduce` (80 B and 800 B) with a blocking `Allreduce` and a `Sendrecv` ring between start and wait: handles bound in the created handler, read in the freeing handler | PASS |
+| per-peer messages and bytes of each request equal the counts derived independently from the `pml_send_start` events that name the request as parent | PASS |
+| nothing leaks between the two requests (800 B request moved more than the 80 B one) | PASS |
+| binding the variable to a point-to-point request is refused (and does not crash) | PASS |
+
+Library bug found: `mca_base_pvar_handle_alloc()` crashed when a variable refused the object it was bound to
+(the destructor removed the half-created handle from a list it was never in); fixed. Two routes now exist for the same
+data: the events with the parent token (used by the tool today) and the request-bound PVARs; the test checks that they
+agree. The tool does not use the bound variables yet. Still no such variable for `coll/adapt`, ucx or other request kinds.
 
 ### 3.4 Not done yet
 
