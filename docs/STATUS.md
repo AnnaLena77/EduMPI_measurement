@@ -457,12 +457,11 @@ bytes, partner and bitmap (no times, no algorithm text). 60 groups; 44 are ident
 | `MPI_Iallreduce` (4 ranks) | 120 / 1200 bytes per rank | 160 or 80 / 1600 or 800 | different Open MPI versions choose different algorithms (`ared_binomial` against libnbc `binomial`); the sums over all ranks are equal (480 and 4800 bytes), the bitmaps differ with the algorithm |
 | `MPI_Alltoallv` | send 0, empty bitmap | send 12, bitmap of the partners | the fork does not evaluate the count arrays; the tool takes them from the arguments and the bitmap from the messages |
 | `MPI_Put` | 80 / 80 | 40 / 0 | the fork counts the one-sided traffic on both sides; the tool reports the 40 bytes of the origin |
-| `MPI_Isend_done` (extra rows) | none | one per rank | the tool writes the synthetic completion row of a send that was still in flight; the fork only with `EDUMPI_SEND_COMPLETION` |
+| `MPI_Isend_done` (extra rows) | none | one per rank | the tool writes the synthetic completion row of a send that was still in flight; the plan names a compile-time option `EDUMPI_SEND_COMPLETION` of the fork for these rows (not checked in the fork source) |
 
 Two real differences were found and fixed: `MPI_Sendrecv` took the source of the receive as partner (the fork: the destination); a blocking
 receive now only sets the partner from the sender when it is MPI_ANY_SOURCE. Not changed: `partnerrank` of collective rows (the fork
-stores one internal peer, the tool -1; the bitmap is the information) and one more `MPI_Barrier` row of the fork per rank 0
-(internal barrier of its own `MPI_Finalize`).
+stores one internal peer, the tool -1; the bitmap is the information) and one more `MPI_Barrier` row of the fork (9 against 8 rows in total) is not explained yet.
 The algorithm names differ in form (`recursive_doubling` against `tuned recursive_doubling`) and, between Open MPI versions, in the
 decision (`binary_tree` against `binomial`); a same-version comparison needs the fork port to main, which does not exist.
 
