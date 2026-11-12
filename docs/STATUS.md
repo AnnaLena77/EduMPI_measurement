@@ -449,3 +449,17 @@ sbatch cluster/test_coll_events.sbatch dev   # WP-B test in several modes (2 nod
 
 The probe `tests/mpit_ob1_probe.c` registers every event whose name starts with a prefix
 (default `ompi.pml_ob1_`; `ompi.pml_` for the new ones) and prints one line per event.
+
+### 3.18 Generic ACTIVATED / COMPLETED for point-to-point requests
+
+`ompi.mpi.request_activated` and `ompi.mpi.request_completed` were raised for libnbc requests only. They are now raised from the
+shared PML helpers (`pml_base_events.h`), so ob1 and ucx report them next to the envelope events `pml_*_start/complete`, with kind 0
+(send) or 1 (receive), the request handle as token, and the flags PERSISTENT (restart with `MPI_Start`) and BLOCKING (internal
+request of a blocking call, which has no created/freeing event). Operations without an own request (inline completion, "dummy
+request") report nothing. For ucx the gates in front of the raise helpers also look at the generic events
+(`mca_pml_base_event_wanted_for`); before that, registering only the generic pair gave no events under ucx.
+Test `mpi_t_event_request_pml_state` (one process, self communicator): non-blocking receive and send, persistent send started twice;
+PASS on ob1 and ucx (jobs 10474 to 10477). Fork commits 4d73c777b5, baeee02010 on `mpit/request-events-pvars`.
+The earlier tests (request state, request-bound PVARs, lifetime with 200000 iterations, cancelled) still pass on both PMLs.
+The tool does not use the generic pair for point-to-point requests (it keeps the envelope events); the pair is for other tools and
+for the WG document.
