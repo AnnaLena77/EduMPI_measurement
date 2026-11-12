@@ -346,6 +346,84 @@ static int lookup(const char *name, evinfo_t *out)
     return 0;
 }
 
+
+/* ---------- algorithm names: from the enumerations of the library's control variables ---------- */
+static const char *comp_names[] = {"other", "basic", "tuned", "han", "libnbc", "adapt", "xhc", "acoll", "ucc", "sm", "self", "inter"};
+static const char *op_names[] = {"allgather", "allgatherv", "allreduce", "alltoall", "alltoallv", "alltoallw", "barrier", "bcast",
+                                 "exscan", "gather", "gatherv", "reduce", "reduce_scatter", "reduce_scatter_block", "scan",
+                                 "scatter", "scatterv"};
+#define N_OPS 17
+#define MAX_ALG 32
+static char alg_names[2][N_OPS][MAX_ALG][24];     /* [0] tuned, [1] libnbc */
+
+static void build_alg_names(void)
+{
+    for (int c = 0; c < 2; ++c) {
+        for (int o = 0; o < N_OPS; ++o) {
+            char var[96], nm[128], desc[256];
+            int idx, nl = sizeof(nm), dl = sizeof(desc), verb, bind, scope, num = 0, el = 0;
+            MPI_Datatype dt;
+            MPI_T_enum en;
+            if (0 == c) {
+                snprintf(var, sizeof(var), "coll_tuned_%s_algorithm", op_names[o]);
+            } else {
+                snprintf(var, sizeof(var), "coll_libnbc_i%s_algorithm", op_names[o]);
+            }
+            if (MPI_SUCCESS != MPI_T_cvar_get_index(var, &idx)
+                || MPI_SUCCESS != MPI_T_cvar_get_info(idx, nm, &nl, &verb, &dt, &en, desc, &dl, &bind, &scope)
+                || MPI_T_ENUM_NULL == en || MPI_SUCCESS != MPI_T_enum_get_info(en, &num, NULL, &el)) {
+                continue;
+            }
+            for (int i = 0; i < num; ++i) {
+                int value, il = 24;
+                char item[24];
+                if (MPI_SUCCESS == MPI_T_enum_get_item(en, i, &value, item, &il) && value >= 0 && value < MAX_ALG) {
+                    snprintf(alg_names[c][o][value], sizeof(alg_names[c][o][value]), "%s", item);
+                }
+            }
+        }
+    }
+}
+
+static void alg_text(char *buf, size_t n, uint32_t packed, uint32_t op)
+{
+    unsigned comp = packed >> 16, id = packed & 0xFFFF;
+    const char *name = NULL;
+    char tmp[32];
+    if (0 == packed) {
+        snprintf(buf, n, "-");
+        return;
+    }
+    if ((2 == comp || 4 == comp) && op < N_OPS && id < MAX_ALG && alg_names[2 == comp ? 0 : 1][op][id][0]) {
+        name = alg_names[2 == comp ? 0 : 1][op][id];
+    } else if (1 == comp) {
+        name = id == 1 ? "linear" : id == 2 ? "log" : "inter";
+    } else if (3 == comp) {
+        name = 255 == id ? "simple" : 0 == id ? "task" : NULL;
+    }
+    if (!name) {
+        snprintf(tmp, sizeof(tmp), "%u", id);
+        name = tmp;
+    }
+    snprintf(buf, n, "%s %s", comp < sizeof(comp_names) / sizeof(comp_names[0]) ? comp_names[comp] : "?", name);
+}
+
+static size_t algorithm_text(const edumpi_rec_t *r, char *buf, size_t n)
+{
+    char a[48], b[48], c[48];
+    if (!r->coll_alg[0] && !r->coll_alg[1] && !r->coll_alg[2]) {
+        buf[0] = 0;
+        return 0;
+    }
+    alg_text(a, sizeof(a), r->coll_alg[0], r->coll_op);
+    if ((r->coll_alg[0] >> 16) == 3) {      /* HAN: the algorithms on the inter-node and intra-node communicators */
+        alg_text(b, sizeof(b), r->coll_alg[1], r->coll_op);
+        alg_text(c, sizeof(c), r->coll_alg[2], r->coll_op);
+        return (size_t) snprintf(buf, n, "HAN(inter: %s, intra: %s)", b, c);
+    }
+    return (size_t) snprintf(buf, n, "%s", a);
+}
+
 static const int need_elems[EV_N] = {7, 7, 6, 6, 9, 1, 1, 2};
 
 void edumpi_mpit_init(void)
@@ -395,6 +473,8 @@ void edumpi_mpit_after_init(void)
     if (!edumpi_mpit_active) {
         return;
     }
+    build_alg_names();
+    edumpi_algorithm_text = algorithm_text;
     register_comm((uint64_t) (uintptr_t) MPI_COMM_WORLD);
     register_comm((uint64_t) (uintptr_t) MPI_COMM_SELF);
 }

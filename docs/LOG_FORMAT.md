@@ -30,6 +30,7 @@ Record (128 bytes, `src/core/record.h`):
 | 88 / 96 | 8 each | `late_sender_ns`, `late_receiver_ns` |
 | 104 | 8 | pointer field, always 0 in the file |
 | 112 | 4 | `partner_bits_words`: if not 0, that many u64 follow the record directly (bitmap of world ranks sent to inside a collective) |
+| 116 | 4 | `coll_op`: number of the collective operation (order of `COLLTYPE` in Open MPI: 0 allgather, 2 allreduce, 6 barrier, 7 bcast, ...), valid only if flag COLLECTIVE is set |
 | 120 | 8 | `request_token` while a request is open (0 in a finished record) |
 
 Trailer: magic `EDUMPITR`, `nf` (u32), `nc` (u32), `nf` function names (32 bytes each), `nc` communicator labels (64 bytes each).

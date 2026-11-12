@@ -33,6 +33,14 @@ void edumpi_store_finalize(void);
 uint16_t edumpi_func_id(const char *name);
 uint16_t edumpi_comm_id(const char *label);
 
+const char *edumpi_func_name(uint16_t id);
+const char *edumpi_comm_name(uint16_t id);
+/* Optional: formats the algorithm of a collective record as text ("tuned:knomial", "HAN(inter: ..., intra: ...)"),
+   set by the MPI_T backend. Returns the number of characters written. */
+extern size_t (*edumpi_algorithm_text)(const edumpi_rec_t *r, char *buf, size_t n);
+extern int edumpi_g_rank;
+extern char edumpi_g_node[64];
+
 /* returns NULL if the store is not initialised or full (counted in edumpi_store_dropped()) */
 edumpi_rec_t *edumpi_begin(uint16_t func, uint16_t comm, uint32_t flags);
 void edumpi_complete(edumpi_rec_t *r);
@@ -48,5 +56,9 @@ uint64_t edumpi_now_ns(void);
 
 /* file sink: $dir/edumpi.<rank>.bin, format in docs/LOG_FORMAT.md */
 edumpi_sink_t *edumpi_file_sink_new(const char *dir);
+/* PostgreSQL binary COPY into edumpi_running_data (built with -DEDUMPI_WITH_PG); NULL if the connection fails */
+edumpi_sink_t *edumpi_pg_sink_new(void);
+/* writes every record to both sinks */
+edumpi_sink_t *edumpi_tee_sink_new(edumpi_sink_t *a, edumpi_sink_t *b);
 
 #endif

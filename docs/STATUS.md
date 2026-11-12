@@ -8,7 +8,7 @@ and the full plan are in `EDUMPI_T_DEVELOPMENT_PLAN.md` (kept next to this repos
 | Part | State |
 |---|---|
 | Open MPI fork `FuldaHPC/code-ompi_edumpi_t` (base: upstream `main`, 6.1.0a1, commit `89b41f785f`) | builds (release and debug); WP-A on branch `mpit/pml-common-events` and WP-B on branch `mpit/coll-events` (stacked on WP-A), both implemented, pushed to the fork and tested |
-| This tool (`EduMPI_measurement`) | milestones G1 (store, file sink), G2 (70 PMPI wrappers), G3 (MPI_T backend: completion, internal sums, bitmaps, algorithms) and G4 (late sender/receiver on ob1) done; G1b, G5, G6 open |
+| This tool (`EduMPI_measurement`) | milestones G1 (store, file sink), G2 (70 PMPI wrappers), G3 (MPI_T backend: completion, internal sums, bitmaps, algorithms) G4 (late sender/receiver on ob1) and G1b (PostgreSQL sink) done; G5, G6 open |
 | Upstream pull requests | none (decision: prototype first) |
 
 ## 2. Test environment
@@ -220,6 +220,28 @@ Limits: ob1 only (as in the fork: with UCX the matching is inside UCX; WP-U); pe
 requests and non-blocking calls whose `Irecv` returns before the match are handled through the
 token, not tested separately; receives that match in the unexpected queue (message first) have
 late sender 0 by definition.
+
+### 3.10 Tool milestone G1b: PostgreSQL sink, algorithm names
+
+`src/core/pg_sink.c` (build with `make PG=1 PQINC=... PQLIB=...`) streams records by binary `COPY`
+into the **unchanged** table `edumpi_running_data` of EduStore: same environment variables
+(`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME`, `DB_PW`, run id `SLURM_JOBID` or `EDUMPI_RUN_ID`,
+`EDUMPI_PROGRAM`), rank 0 inserts the run, every rank its `edumpi_cluster_info` row, rank 0 sets
+`end_time` at the end. Row semantics as in the fork: `time_start` rounded to the second, `time_end`
+and `time_diff` exact, `MPI_Irecv` ends at the arrival, a send still in flight gets an extra
+`MPI_Isend_done` row, `coll_partnerranks` is a 50-byte bitmap (longer for more than 400 ranks)
+and empty for point-to-point. `EDUMPI_SINK=file|pg|both` (default `pg` when `DB_HOST` is set).
+Algorithm names come from the enumerations of `coll_tuned_<op>_algorithm` and
+`coll_libnbc_i<op>_algorithm` read through MPI_T at start (`tuned recursive_doubling`,
+`libnbc linear`, `basic log`, `HAN(inter: libnbc linear, intra: tuned knomial)`).
+
+| Test (job 10414, `cluster/tool_pg_check.sbatch`: private PostgreSQL 17 server on the node, listening on 127.0.0.1 only; 4 ranks; `tests/sql/check_calls.sql`) | Result |
+|---|---|
+| one run row with end time, four cluster rows; `MPI_Send`/`Recv` sizes and partners; `MPI_Irecv` row ends at arrival; 8 collective `Allreduce` rows with algorithm text; 50-byte bitmaps; `MPI_Put` as one-sided; `time_start` whole seconds; no row ends before it starts; processor name and rank filled | 11 of 11 PASS |
+
+Not tested: TimescaleDB itself (the test uses the plain table definitions; the GUI and the
+continuous aggregates were not run against rows of the new writer), several nodes writing at once
+to one server, very large runs (batching is per monitor flush, 0.5 s).
 
 ### 3.4 Not done yet
 

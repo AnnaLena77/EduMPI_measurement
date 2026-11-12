@@ -6,6 +6,7 @@
  */
 #include <mpi.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "wrap.h"
 
@@ -24,7 +25,20 @@ static void start_tool(void)
     PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
     PMPI_Comm_size(MPI_COMM_WORLD, &size);
     PMPI_Get_processor_name(node, &len);
-    edumpi_store_init(rank, size, node, edumpi_file_sink_new(dir ? dir : "."), ms ? (unsigned) atoi(ms) : 500);
+    const char *sink = getenv("EDUMPI_SINK");   /* file | pg | both; default: pg if DB_HOST is set, else file */
+    edumpi_sink_t *s = NULL;
+    if (!sink) {
+        sink = getenv("DB_HOST") ? "pg" : "file";
+    }
+    if (0 == strcmp(sink, "both")) {
+        s = edumpi_tee_sink_new(edumpi_pg_sink_new(), edumpi_file_sink_new(dir ? dir : "."));
+    } else if (0 == strcmp(sink, "pg")) {
+        s = edumpi_pg_sink_new();
+    }
+    if (NULL == s && 0 != strcmp(sink, "pg")) {
+        s = edumpi_file_sink_new(dir ? dir : ".");
+    }
+    edumpi_store_init(rank, size, node, s, ms ? (unsigned) atoi(ms) : 500);
     edumpi_enabled = 1;
     edumpi_mpit_after_init();
 }

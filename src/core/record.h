@@ -51,7 +51,7 @@ typedef struct edumpi_rec {
     uint64_t late_receiver_ns; /* sender waited for the receiver; 0: none */
     uint64_t *partner_bits;    /* bitmap of world ranks sent to inside a collective (malloc, freed by the store) */
     uint32_t partner_bits_words;
-    uint32_t pad2;
+    uint32_t coll_op;          /* COLLTYPE of a collective call, 0xFFFFFFFF none */
     uint64_t request_token;    /* MPI_T request token while the request is open, else 0 */
     uint64_t pad3;
 } edumpi_rec_t;

@@ -1,7 +1,12 @@
 # Build with the MPI compiler wrapper of the MPI the program uses:  make CC=mpicc
 CC ?= mpicc
 CFLAGS ?= -O2 -g -Wall -Wextra
-CORE = src/core/store.c src/core/file_sink.c
+CORE = src/core/store.c src/core/file_sink.c src/core/tee_sink.c src/core/pg_sink.c
+# PostgreSQL sink:  make PG=1 PQINC=<libpq include dir> PQLIB=<libpq lib dir>
+ifdef PG
+CFLAGS += -DEDUMPI_WITH_PG -I$(PQINC)
+LDPQ = -L$(PQLIB) -Wl,-rpath,$(PQLIB) -lpq
+endif
 
 all: libedumpi.so
 
@@ -11,10 +16,10 @@ src/pmpi/wrappers.c: tools/gen_pmpi.py
 	python3 tools/gen_pmpi.py $@
 
 libedumpi.so: $(CORE) $(PMPI) src/pmpi/wrap.h src/core/store.h src/core/record.h
-	$(CC) $(CFLAGS) -shared -fPIC -o $@ $(CORE) $(PMPI) -lpthread
+	$(CC) $(CFLAGS) -shared -fPIC -o $@ $(CORE) $(PMPI) -lpthread $(LDPQ)
 
 test_store: tests/test_store.c $(CORE) src/core/store.h src/core/record.h
-	cc $(CFLAGS) -pthread -o $@ tests/test_store.c $(CORE)
+	cc $(CFLAGS) -pthread -o $@ tests/test_store.c $(CORE) $(LDPQ)
 
 test_init: tests/test_init.c
 	$(CC) $(CFLAGS) -o $@ tests/test_init.c

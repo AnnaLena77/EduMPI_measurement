@@ -4,6 +4,7 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <time.h>
@@ -59,6 +60,12 @@ static uint16_t intern(char (*table)[NAME_LEN], unsigned *count, const char *nam
     pthread_mutex_unlock(&names_lock);
     return id;
 }
+
+const char *edumpi_func_name(uint16_t id) { return id < nfuncs ? func_names[id] : ""; }
+const char *edumpi_comm_name(uint16_t id) { return id < ncomms ? comm_names[id] : ""; }
+size_t (*edumpi_algorithm_text)(const edumpi_rec_t *r, char *buf, size_t n);
+int edumpi_g_rank;
+char edumpi_g_node[64];
 
 uint16_t edumpi_func_id(const char *name) { return intern(func_names, &nfuncs, name); }
 uint16_t edumpi_comm_id(const char *label) { return intern(comm_names, &ncomms, label); }
@@ -194,6 +201,8 @@ static void *monitor_main(void *arg)
 int edumpi_store_init(int rank, int world_size, const char *node, edumpi_sink_t *sink, unsigned flush_ms)
 {
     g_sink = sink;
+    edumpi_g_rank = rank;
+    snprintf(edumpi_g_node, sizeof(edumpi_g_node), "%s", node ? node : "");
     if (flush_ms > 0) {
         g_flush_ms = flush_ms;
     }

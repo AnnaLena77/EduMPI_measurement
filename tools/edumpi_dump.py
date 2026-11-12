@@ -38,7 +38,7 @@ def read_file(path):
                          comm=comms[comm] if comm < len(comms) else comm, start_ns=start, end_ns=endn,
                          done_ns=done, send_bytes=sb, recv_bytes=rb, partner=partner, flags=flags,
                          flagnames='|'.join(n for i, n in enumerate(FLAGS) if flags & (1 << i)),
-                         coll_alg=(a0, a1, a2), late_sender_ns=ls, late_receiver_ns=lr, partner_bits=bits))
+                         coll_alg=(a0, a1, a2), coll_op=_p2, late_sender_ns=ls, late_receiver_ns=lr, partner_bits=bits))
     return hdr, recs
 
 

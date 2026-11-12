@@ -147,6 +147,10 @@ def main(out):
         o.append('    }')
         o.append('    r_ = edumpi_rec_begin("MPI_%s", &fid_, %s, %s);' % (name, cid, fl))
         iscoll = kind in ('coll', 'icoll')
+        if iscoll:
+            o.append('    if (r_) {')
+            o.append('        r_->coll_op = %s;' % OPID.get(name, 0xFFFFFFFF))
+            o.append('    }')
         o.append('    edumpi_tls_cur = r_;')
         if iscoll:
             o.append('    edumpi_tls_op = %s;' % OPID.get(name, -1))
