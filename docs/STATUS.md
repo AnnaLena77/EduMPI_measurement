@@ -529,7 +529,8 @@ Applications (4 ranks, 2 nodes, 2 cores per rank):
   successful in all runs. No measurable overhead (compute bound).
 - Jacobi stencil `partdiff` with 16 interlines, 200000 iterations (`tool_partdiff.sbatch`, job 10504, before the lazy start events):
   ucx 40.2 s / 40.9 s / 42.4 s (none / PMPI / MPI_T, +5 %), ob1 40.7 s / 42.4 s / 46.6 s (+14 %); with 32 interlines +1 % (ucx) and +1.5 % (ob1).
-  Rerun with the final tool: see below.
+  Rerun with the final tool (job 10508, lazy start events; medians of 3, the baseline varies by 10 % between runs): ucx 41.2 s / 40.3 s / 42.5 s
+  (none / PMPI / MPI_T, +3 %), ob1 43.1 s / 41.9 s / 44.0 s (+2 %).
 
 Not done: the AMT (HPX broadcast) workload of the +7 to +9 % reference needs the HPX build; library dispatch with a lock-free snapshot of
 the registrations (would remove most of the 0.5 us per event; a change of the upstream event framework, not made here).
