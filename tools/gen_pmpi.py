@@ -156,9 +156,10 @@ def main(out):
         o.append('    if (!edumpi_enabled) {')
         o.append('        return PMPI_%s(%s);' % (name, ', '.join(names)))
         o.append('    }')
-        if kind in ('icoll', 'pcoll'):
-            o.append('    if (!edumpi_mpit_req_on) {')
-            o.append('        edumpi_mpit_need_coll_requests();')
+        if kind in ('coll', 'icoll', 'pcoll'):
+            grp = 'EDUMPI_LAZY_COLL' if kind == 'coll' else 'EDUMPI_LAZY_COLL | EDUMPI_LAZY_REQ'
+            o.append('    if ((edumpi_mpit_lazy_done & (%s)) != (%s)) {' % (grp, grp))
+            o.append('        edumpi_mpit_need(%s);' % grp)
             o.append('    }')
         o.append('    r_ = edumpi_rec_begin("MPI_%s", &fid_, %s, %s);' % (name, cid, fl))
         iscoll = kind in ('coll', 'icoll')

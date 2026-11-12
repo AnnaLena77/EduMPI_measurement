@@ -21,12 +21,13 @@ mkdir -p run && cd run
 # also in the runs without tool, so that the binding is the same in all columns.
 BIND="--map-by ppr:2:node:PE=2 --bind-to core"
 for pml in ucx ob1; do
-  for mode in none pmpi all nomatch nomatch-noreq min algo; do
+  for mode in none pmpi default all nomatch-noreq min algo; do
     for rep in 1 2 3; do
       L="-x LD_PRELOAD=$W/libedumpi.so -x EDUMPI_LOG_DIR=."
       case $mode in
         none) ENVS="" ;;
         pmpi) ENVS="$L -x EDUMPI_MPIT=0" ;;
+        default) ENVS="$L" ;;
         all) ENVS="$L -x EDUMPI_EVENT_MASK=0x1ff" ;;
         nomatch) ENVS="$L -x EDUMPI_EVENT_MASK=0x11f" ;;
         nomatch-noreq) ENVS="$L -x EDUMPI_EVENT_MASK=0x01f" ;;

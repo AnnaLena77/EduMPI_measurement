@@ -36,7 +36,6 @@ typedef struct {
 
 static evinfo_t ev[EV_N];
 static int created_idx = -1, freed_idx = -1;
-int edumpi_mpit_req_on;
 static int cb_nop;                   /* EDUMPI_CB_NOP=1: callbacks return at once (measures the delivery cost of the library alone) */
 static unsigned ev_mask = ~0u;       /* which event types are registered on communicators (EDUMPI_EVENT_MASK, bit = enum value) */
 static int64_t clock_offset_ns;      /* CLOCK_REALTIME - source ticks, ticks are ns */
@@ -411,27 +410,42 @@ static void register_comm(uint64_t handle)
     pthread_mutex_unlock(&reg_lock);
 }
 
-/* (flag declared at the top)
-   The generic REQUEST_COMPLETED event is raised for every point-to-point request as well and costs 1 to 1.5 microseconds
-   per message, but the tool needs it only for the completion time of non-blocking and persistent collectives. It is
-   therefore registered when the program first calls such a collective (unless EDUMPI_EVENT_MASK says otherwise). */
-void edumpi_mpit_need_coll_requests(void)
+/* Two groups of events are registered lazily, because they cost about 1 microsecond per message each and most programs
+   do not need them:
+   - EDUMPI_LAZY_COLL: the start events of send and receive. The tool uses them only for the internal messages of
+     collectives (negative tag: byte sums and partner bitmaps, parent of a receive); user messages are ignored.
+     A program without collectives never registers them.
+   - EDUMPI_LAZY_REQ: the generic REQUEST_COMPLETED event, raised for every point-to-point request as well, needed only
+     for the completion time of non-blocking and persistent collectives.
+   The wrapper of a collective calls this before the first use. An explicit EDUMPI_EVENT_MASK is taken as it is. */
+unsigned edumpi_mpit_lazy_done;
+static const unsigned lazy_events[2] = {(1u << EV_SEND_START) | (1u << EV_RECV_START), 1u << EV_REQ_COMPLETED};
+
+void edumpi_mpit_need(unsigned groups)
 {
-    if (!edumpi_mpit_active || edumpi_mpit_req_on) {
+    if (!edumpi_mpit_active) {
         return;
     }
     pthread_mutex_lock(&reg_lock);
-    if (!edumpi_mpit_req_on) {
-        if (!(ev_mask & (1u << EV_REQ_COMPLETED))) {
-            ev_mask |= 1u << EV_REQ_COMPLETED;
+    for (int g = 0; g < 2; ++g) {
+        unsigned add;
+        if (!(groups & (1u << g)) || (edumpi_mpit_lazy_done & (1u << g))) {
+            continue;
+        }
+        add = lazy_events[g] & ~ev_mask;
+        ev_mask |= add;
+        for (int k = 0; k < EV_N; ++k) {
+            if (!(add & (1u << k))) {
+                continue;
+            }
             for (int i = 0; i < MAXREG; ++i) {
                 if (regs[i].comm) {
                     MPI_Comm c = (MPI_Comm) (uintptr_t) regs[i].comm;
-                    reg_one(&regs[i], &c, EV_REQ_COMPLETED);
+                    reg_one(&regs[i], &c, k);
                 }
             }
         }
-        edumpi_mpit_req_on = 1;
+        edumpi_mpit_lazy_done |= 1u << g;
     }
     pthread_mutex_unlock(&reg_lock);
 }
@@ -606,10 +620,10 @@ void edumpi_mpit_init(void)
     }
     ev_mask = ~0u;
     cb_nop = getenv("EDUMPI_CB_NOP") && '1' == getenv("EDUMPI_CB_NOP")[0];
-    ev_mask &= ~(1u << EV_REQ_COMPLETED);               /* lazily, see edumpi_mpit_need_coll_requests() */
+    ev_mask &= ~(lazy_events[0] | lazy_events[1]);       /* lazily, see edumpi_mpit_need() */
     if (getenv("EDUMPI_EVENT_MASK")) {
         ev_mask = (unsigned) strtoul(getenv("EDUMPI_EVENT_MASK"), NULL, 0);
-        edumpi_mpit_req_on = 1;                          /* an explicit mask is taken as it is */
+        edumpi_mpit_lazy_done = EDUMPI_LAZY_COLL | EDUMPI_LAZY_REQ;      /* an explicit mask is taken as it is */
     }
     if (getenv("EDUMPI_MATCHING") && '0' == getenv("EDUMPI_MATCHING")[0]) {
         ev_mask &= ~((1u << EV_ACTIVATE) | (1u << EV_MATCH) | (1u << EV_TRANSFER));
