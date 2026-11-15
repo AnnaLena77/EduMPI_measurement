@@ -582,6 +582,21 @@ and flush interval costs the server a round trip) and the delay with many ranks 
 flush interval plus the time until the call is complete (`EDUMPI_FLUSH_MS`, default 500); the poll loop of the test has a resolution of
 about 0.5 s.
 
+### 3.25 Time zones: start and end of the run (2026-11-15)
+
+Report from a GUI run: the run never showed as finished. The GUI starts its timeline at `edumpi_runs.start_time` and advances it second
+by second. The first version of the writer stored `start_time` as a local-time string of the node (as the old backend did), which the
+server reads in **its own** time zone, and `end_time` as the server's `now()`. With the nodes on Europe/Berlin and a server on UTC,
+`start_time` was one hour **after** `end_time` (job 10532: start_time - first row = +3600 s, end_time - last row = +0.1 s). The old backend
+wrote both as local strings, so they were wrong by the same amount and stayed consistent with each other.
+
+Fix: both are now true instants from the clock of the node (`to_timestamp(<epoch>)`), the same clock as the rows, so they do not depend on
+the zone of the node or of the server (and not on the clock of the database server). Test `cluster/pg_tz_check.sbatch`, server zone UTC
+(job 10533) and Asia/Tokyo (10534): start_time - first row 0.7 / 0.8 s (the first row is rounded down to the full second), end_time - last
+row 0.1 s.
+
+Not checked: the GUI itself with the fix (hers); whether anything else in the GUI assumes the old local-string start time.
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs

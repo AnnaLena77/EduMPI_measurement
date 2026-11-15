@@ -150,12 +150,15 @@ static int pg_open(edumpi_sink_t *s, int rank, int world_size, const char *node)
         const char *user_id = home && strrchr(home, '/') ? strrchr(home, '/') + 1 : "unknown";
         const char *prog = getenv("EDUMPI_PROGRAM");
         char start[40];
-        time_t now = time(NULL);
+        struct timespec now;
         const char *vals[4];
-        strftime(start, sizeof(start), "%Y-%m-%d %H:%M:%S", localtime(&now));
+        clock_gettime(CLOCK_REALTIME, &now);
+        /* a true instant from the clock of this node (the rows use the same clock): independent of the time zone of the
+           node and of the server; a local-time string would be read in the zone of the server session */
+        snprintf(start, sizeof(start), "%.6f", (double) now.tv_sec + (double) now.tv_nsec * 1e-9);
         vals[0] = runstr; vals[1] = start; vals[2] = user_id; vals[3] = prog ? prog : "";
         res = PQexecParams(p->conn, "INSERT INTO edumpi_runs (edumpi_run_id, start_time, user_id, program_name) "
-                           "VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING", 4, NULL, vals, NULL, NULL, 0);
+                           "VALUES ($1, to_timestamp($2::double precision), $3, $4) ON CONFLICT DO NOTHING", 4, NULL, vals, NULL, NULL, 0);
         PQclear(res);
     } else {
         for (int i = 0; i < 300; ++i) {          /* wait for rank 0 to insert the run (30 s) */
@@ -292,10 +295,14 @@ static int pg_close(edumpi_sink_t *s, const char *const *f, size_t nf, const cha
         PQclear(res);
     }
     if (0 == edumpi_g_rank && p->conn) {
-        char runstr[32];
-        const char *vals[1] = {runstr};
+        char runstr[32], endstr[40];
+        struct timespec now;
+        const char *vals[2] = {runstr, endstr};
+        clock_gettime(CLOCK_REALTIME, &now);
         snprintf(runstr, sizeof(runstr), "%d", p->run_id);
-        res = PQexecParams(p->conn, "UPDATE edumpi_runs SET end_time = now() WHERE edumpi_run_id = $1", 1, NULL, vals, NULL, NULL, 0);
+        snprintf(endstr, sizeof(endstr), "%.6f", (double) now.tv_sec + (double) now.tv_nsec * 1e-9);
+        res = PQexecParams(p->conn, "UPDATE edumpi_runs SET end_time = to_timestamp($2::double precision) WHERE edumpi_run_id = $1",
+                           2, NULL, vals, NULL, NULL, 0);
         PQclear(res);
     }
     if (p->conn) PQfinish(p->conn);
