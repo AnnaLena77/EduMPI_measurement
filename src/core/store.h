@@ -29,6 +29,9 @@ typedef struct edumpi_sink {
 
 /* sink may be NULL (records are dropped when flushed: tests of the store only). */
 int edumpi_store_init(int rank, int world_size, const char *node, edumpi_sink_t *sink, unsigned flush_ms);
+/* call before edumpi_store_init: no monitor thread. The application threads write complete segments themselves (the thread
+   that starts a new segment, without waiting) and renew the clock anchor; for sinks that never block long (file). */
+void edumpi_store_threadless(int on);
 /* writes everything, stops the monitor thread, closes the sink */
 void edumpi_store_finalize(void);
 

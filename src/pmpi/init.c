@@ -5,6 +5,7 @@
  * Environment: EDUMPI_LOG_DIR (default "."), EDUMPI_FLUSH_MS (default 500), EDUMPI_DISABLE=1.
  */
 #include <mpi.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -37,6 +38,17 @@ static void start_tool(void)
     }
     if (NULL == s && 0 != strcmp(sink, "pg")) {
         s = edumpi_file_sink_new(dir ? dir : ".");
+    }
+    /* EDUMPI_THREAD=0: no monitor thread (file sink only; the database sink blocks on the network and needs the thread).
+       Default: no thread for the file sink, a thread when the database is used. */
+    {
+        const char *th = getenv("EDUMPI_THREAD");
+        int want_thread = th ? ('0' != th[0]) : (0 != strcmp(sink, "file"));
+        if (!want_thread && 0 != strcmp(sink, "file")) {
+            fprintf(stderr, "edumpi: EDUMPI_THREAD=0 is only possible with EDUMPI_SINK=file; using the monitor thread\n");
+            want_thread = 1;
+        }
+        edumpi_store_threadless(!want_thread);
     }
     edumpi_store_init(rank, size, node, s, ms ? (unsigned) atoi(ms) : 500);
     edumpi_enabled = 1;

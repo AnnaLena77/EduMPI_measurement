@@ -56,10 +56,12 @@ int main(int argc, char **argv)
     if (argc > 3) per_thread = atol(argv[3]);
     total = (uint64_t) nthreads * per_thread;
 
+    int threadless = getenv("TS_THREADLESS") != NULL;   /* no monitor thread: segments and clock are handled by the callers */
+    edumpi_store_threadless(threadless);
     edumpi_store_init(3, 8, "testnode", edumpi_file_sink_new(dir), 20);
     {   /* clock: the (TSC based) tool clock must follow CLOCK_REALTIME while the monitor thread renews the anchor */
         int64_t worst = 0;
-        for (int i = 0; i < 40; ++i) {
+        for (int i = 0; i < (threadless ? 100 : 40); ++i) {   /* thread-less: 5 s, the anchor is renewed by these calls */
             struct timespec ts, d = {0, 50000000};
             uint64_t a = edumpi_now_ns();
             clock_gettime(CLOCK_REALTIME, &ts);
@@ -69,7 +71,7 @@ int main(int argc, char **argv)
             if (diff > worst) worst = diff;
             nanosleep(&d, NULL);
         }
-        printf("clock: worst difference to CLOCK_REALTIME over 2 s: %lld ns\n", (long long) worst);
+        printf("clock: worst difference to CLOCK_REALTIME over %d s: %lld ns\n", threadless ? 5 : 2, (long long) worst);
         if (worst > 100000) { printf("FAIL: clock\n"); return 1; }
     }
     for (long i = 0; i < nthreads; ++i) pthread_create(&th[i], NULL, worker, (void *) i);

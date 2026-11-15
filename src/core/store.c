@@ -23,6 +23,9 @@ static pthread_mutex_t flush_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static edumpi_sink_t *g_sink;
 static int g_active;
+static int g_threadless;              /* no monitor thread: the application threads flush and renew the clock */
+_Static_assert(0 == (EDUMPI_SEG_EVENTS & (EDUMPI_SEG_EVENTS - 1)), "segment size must be a power of two");
+static void inline_flush(void);
 
 static pthread_t monitor;
 static int monitor_started;
@@ -53,6 +56,10 @@ static uint64_t realtime_now(void)
 static volatile struct { uint64_t tsc0, ns0; double ns_per_tick; } anchor;
 static _Atomic unsigned anchor_seq;      /* odd while the anchor is written (seqlock) */
 static int tsc_ok;
+static atomic_flag renew_busy = ATOMIC_FLAG_INIT;   /* one writer of the anchor at a time */
+/* Thread-less mode: ticks after which the application thread renews the anchor itself (about 1 s). UINT64_MAX when a monitor
+   thread does it. Costs one compare per time stamp. */
+static uint64_t renew_ticks = UINT64_MAX, renew_max = UINT64_MAX;
 
 static int has_invariant_tsc(void)
 {
@@ -74,15 +81,33 @@ static void anchor_set(uint64_t tsc, uint64_t ns, double mult)
     atomic_store_explicit(&anchor_seq, s + 2, memory_order_release);
 }
 
+/* One (tsc, ns) pair. The clock is read between two TSC reads and the pair uses the middle of the two (best of three), so
+   that the read latency (about 1 us on HPET) does not skew the rate; with the reads in sequence the first calibration
+   had a rate error of about 1e-4. */
+static void clock_sample(uint64_t *tsc, uint64_t *ns)
+{
+    uint64_t best = ~0ull, bt = 0, bn = 0;
+    for (int i = 0; i < 3; ++i) {
+        uint64_t a = __rdtsc(), n = realtime_now(), b = __rdtsc();
+        if (b - a < best) {
+            best = b - a;
+            bt = a + (b - a) / 2;
+            bn = n;
+        }
+    }
+    *tsc = bt;
+    *ns = bn;
+}
+
 /* first: calibrate over 20 ms; later: new anchor with the rate measured since the last one */
 static void tsc_anchor_update(int first)
 {
-    uint64_t t0 = __rdtsc(), n0 = realtime_now(), t1, n1;
+    uint64_t t0, n0, t1, n1;
+    clock_sample(&t0, &n0);
     if (first) {
         struct timespec d = {0, 20000000};
         nanosleep(&d, NULL);
-        n1 = realtime_now();
-        t1 = __rdtsc();
+        clock_sample(&t1, &n1);
         anchor_set(t1, n1, (double) (n1 - n0) / (double) (t1 - t0));
     } else {
         double m = (double) (n0 - anchor.ns0) / (double) (t0 - anchor.tsc0);
@@ -90,16 +115,22 @@ static void tsc_anchor_update(int first)
     }
 }
 
+static void clock_renew(void);
+
 uint64_t edumpi_now_ns(void)
 {
     if (tsc_ok) {
         unsigned s1, s2;
-        uint64_t ns;
+        uint64_t ns, ticks;
         do {
             s1 = atomic_load_explicit(&anchor_seq, memory_order_acquire);
-            ns = anchor.ns0 + (uint64_t) ((double) (__rdtsc() - anchor.tsc0) * anchor.ns_per_tick);
+            ticks = __rdtsc() - anchor.tsc0;
+            ns = anchor.ns0 + (uint64_t) ((double) ticks * anchor.ns_per_tick);
             s2 = atomic_load_explicit(&anchor_seq, memory_order_acquire);
         } while ((s1 & 1) || s1 != s2);
+        if (__builtin_expect(ticks > renew_ticks, 0)) {
+            clock_renew();
+        }
         return ns;
     }
     return realtime_now();
@@ -114,14 +145,24 @@ static void clock_init(void)
 }
 static void clock_renew(void)
 {
-    if (tsc_ok) {
+    if (tsc_ok && !atomic_flag_test_and_set_explicit(&renew_busy, memory_order_acquire)) {
         tsc_anchor_update(0);
+        if (renew_max != UINT64_MAX && renew_ticks < renew_max) {      /* thread-less: 0.1 s, 0.2 s, ... up to 1 s */
+            renew_ticks = renew_ticks * 2 < renew_max ? renew_ticks * 2 : renew_max;
+        }
+        atomic_flag_clear_explicit(&renew_busy, memory_order_release);
     }
+}
+static void clock_renew_inline(int on)
+{
+    renew_max = on && tsc_ok ? (uint64_t) (1e9 / anchor.ns_per_tick) : UINT64_MAX;
+    renew_ticks = renew_max == UINT64_MAX ? UINT64_MAX : renew_max / 10;
 }
 #else
 uint64_t edumpi_now_ns(void) { return realtime_now(); }
 static void clock_init(void) {}
 static void clock_renew(void) {}
+static void clock_renew_inline(int on) { (void) on; }
 #endif
 
 static uint16_t intern(char (*table)[NAME_LEN], unsigned *count, const char *name)
@@ -193,6 +234,9 @@ edumpi_rec_t *edumpi_begin(uint16_t func, uint16_t comm, uint32_t flags)
     r->partner = -1;
     r->start_ns = edumpi_now_ns();
     atomic_store_explicit(&r->state, EDUMPI_S_OPEN, memory_order_release);
+    if (__builtin_expect(0 == (idx & (EDUMPI_SEG_EVENTS - 1)) && idx > 0 && g_threadless, 0)) {
+        inline_flush();
+    }
     return r;
 }
 
@@ -229,12 +273,11 @@ static void write_run(edumpi_rec_t *base, uint64_t a, uint64_t b)
 /* Every flush writes all records that are complete, also those of the segment that is still being filled, so that a
    reader of the database sees them within one flush interval. A record that is still open (a posted receive, a call
    that has not returned) is skipped and written when it completes. force: write everything (finalize). */
-void edumpi_store_flush(int force)
+static void flush_locked(int force)
 {
     uint64_t total, last;
     int any = 0;
 
-    pthread_mutex_lock(&flush_lock);
     total = atomic_load_explicit(&claimed, memory_order_acquire);
     if (total > (uint64_t) EDUMPI_MAX_SEGS * EDUMPI_SEG_EVENTS) {
         total = (uint64_t) EDUMPI_MAX_SEGS * EDUMPI_SEG_EVENTS;
@@ -296,8 +339,26 @@ void edumpi_store_flush(int force)
     if (any && g_sink && g_sink->sync) {
         g_sink->sync(g_sink);
     }
+}
+
+void edumpi_store_flush(int force)
+{
+    pthread_mutex_lock(&flush_lock);
+    flush_locked(force);
     pthread_mutex_unlock(&flush_lock);
 }
+
+/* Thread-less mode: the application thread that claims the first record of a new segment writes the older segments. A thread
+   that does not get the lock continues at once (another thread is flushing). */
+static void inline_flush(void)
+{
+    if (0 == pthread_mutex_trylock(&flush_lock)) {
+        flush_locked(0);
+        pthread_mutex_unlock(&flush_lock);
+    }
+}
+
+void edumpi_store_threadless(int on) { g_threadless = on; }
 
 static void *monitor_main(void *arg)
 {
@@ -319,6 +380,14 @@ static void *monitor_main(void *arg)
     return NULL;
 }
 
+static void store_atexit(void)
+{
+    if (g_active) {
+        edumpi_algorithm_text = NULL;     /* MPI_T may be gone */
+        edumpi_store_finalize();
+    }
+}
+
 int edumpi_store_init(int rank, int world_size, const char *node, edumpi_sink_t *sink, unsigned flush_ms)
 {
     g_sink = sink;
@@ -331,9 +400,13 @@ int edumpi_store_init(int rank, int world_size, const char *node, edumpi_sink_t 
         g_sink = NULL;
     }
     clock_init();
+    clock_renew_inline(g_threadless);
     g_active = 1;
     mon_stop = 0;
-    monitor_started = (0 == pthread_create(&monitor, NULL, monitor_main, NULL));
+    if (!g_threadless) {
+        monitor_started = (0 == pthread_create(&monitor, NULL, monitor_main, NULL));
+    }
+    atexit(store_atexit);       /* a program that never reaches MPI_Finalize still leaves its data */
     return 0;
 }
 
