@@ -9,11 +9,12 @@
 #SBATCH -o /home/fdai0231/edumpi_t/jobs/%x-%j.out
 # WP-V0 test: builds the GUI prefix and runs a job script written exactly like the one EduMPI_GUI writes
 # (controller.cpp, writeRemoteBashFile, option 0), against a private PostgreSQL server on 127.0.0.1.
-# usage: sbatch gui_like_check.sbatch [ompi-install-name]
+# usage: sbatch gui_like_check.sbatch [ompi-install-name] [existing GUI prefix: test this one instead of building a new one]
 NAME=${1:-dev-rel}
 OMPI=/data/fdai0231/edumpi-t/install/$NAME
 GUI=/data/fdai0231/edumpi-t/gui/test-$SLURM_JOB_ID
-bash $HOME/edumpi_t/tool/cluster/make_gui_prefix.sh $OMPI $GUI $HOME/edumpi_t/tool || exit 1
+if [ -n "$2" ]; then GUI=$2; test -x $GUI/bin/mpirun || { echo "no prefix $GUI"; exit 1; }
+else bash $HOME/edumpi_t/tool/cluster/make_gui_prefix.sh $OMPI $GUI $HOME/edumpi_t/tool || exit 1; fi
 export PATH=$(dirname $(readlink -f $(which initdb))):$PATH
 PGBIN=$(dirname $(readlink -f $(which initdb)))
 PGD=/tmp/pg-$SLURM_JOB_ID; PORT=54331; HOST=127.0.0.1
