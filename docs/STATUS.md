@@ -535,6 +535,24 @@ Applications (4 ranks, 2 nodes, 2 cores per rank):
 Not done: the AMT (HPX broadcast) workload of the +7 to +9 % reference needs the HPX build; library dispatch with a lock-free snapshot of
 the registrations (would remove most of the 0.5 us per event; a change of the upstream event framework, not made here).
 
+### 3.23 GUI prefix (WP-V0 of `../BACKEND_VARIANTS_PLAN.md`, 2026-11-15)
+
+`cluster/make_gui_prefix.sh <ompi-prefix> <new-prefix> <tool-dir>` builds a directory with `bin/mpicc`, `bin/mpirun` and
+`lib/libedumpi.so` (PostgreSQL sink). EduMPI_GUI only calls `<path>/bin/mpicc` and `<path>/bin/mpirun`, so this path can be
+entered as "cluster EduMPI path" without changing the GUI. `bin/mpirun` preloads the tool into the application ranks only
+(`-x LD_PRELOAD=...`) and passes the `DB_*` variables, `EDUMPI_PROGRAM` and `SLURM_JOBID`.
+
+`cluster/gui_like_check.sbatch` (job 10521, `dev-rel` build, private PostgreSQL on 127.0.0.1): runs the lines of the job script
+that the GUI writes (env file sourcing, `mpicc`, `mpirun -n 4 --map-by :PE=2 --mca pml ob1`) and `tests/sql/check_calls.sql`:
+all checks PASS, 60 rows, 4 ranks, run id = job id.
+
+Finding: the GUI's `--map-by :PE=2` is **rejected** by the runtime of the MPI_T fork on nodes without SMT
+(`PMIX_ERR_JOB_FAILED_TO_MAP`, "multiple cpus-per-proc ... BYCORE"); `core:PE=2` is rejected too, `slot:PE=2` works and binds
+each rank to two cores (job 10520). The wrapper therefore rewrites `--map-by :PE=N` to `--map-by slot:PE=N`.
+
+Not checked: the real GUI and TimescaleDB (hers); `mpirun` of other users; a frozen MPI build for the prefix (the test used
+`dev-rel`, which changes with the fork branch).
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs
