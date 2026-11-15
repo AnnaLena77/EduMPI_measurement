@@ -31,6 +31,7 @@ typedef struct {
     int run_id;
     int world_size;
     int copy_open;
+    size_t rows_since_sync;          /* records written since the last COPY commit */
 } pg_priv_t;
 
 static const char COPY_QUERY[] = "COPY edumpi_running_data FROM STDIN (FORMAT binary)";
@@ -234,6 +235,43 @@ static int pg_write(edumpi_sink_t *s, const edumpi_rec_t *recs, size_t n)
         }
     }
     flush_copy(p);
+    p->rows_since_sync += n;
+    return 0;
+}
+
+/* PostgreSQL shows the rows of a COPY to other sessions only when the COPY command ends. Called by the store after each
+   flush that wrote records: end the COPY (commit) and start the next one, so that readers (EduMPI_GUI) see the rows
+   within one flush interval. Runs on the monitor thread, never on an application thread. */
+static int pg_sync(edumpi_sink_t *s)
+{
+    pg_priv_t *p = s->priv;
+    PGresult *res;
+    char trailer[2] = {(char) 0xff, (char) 0xff};
+
+    if (!p->copy_open || 0 == p->rows_since_sync) {
+        return 0;
+    }
+    p->rows_since_sync = 0;
+    PQputCopyData(p->conn, trailer, 2);
+    PQputCopyEnd(p->conn, NULL);
+    res = PQgetResult(p->conn);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "edumpi: COPY into edumpi_running_data failed: %s", PQerrorMessage(p->conn));
+        PQclear(res);
+        p->copy_open = 0;
+        return -1;
+    }
+    PQclear(res);
+    res = PQexec(p->conn, COPY_QUERY);
+    if (PQresultStatus(res) != PGRES_COPY_IN) {
+        fprintf(stderr, "edumpi: COPY restart failed: %s", PQerrorMessage(p->conn));
+        PQclear(res);
+        p->copy_open = 0;
+        return -1;
+    }
+    PQclear(res);
+    memcpy(p->buf, COPY_HEADER, 19);
+    p->len = 19;
     return 0;
 }
 
@@ -244,6 +282,7 @@ static int pg_close(edumpi_sink_t *s, const char *const *f, size_t nf, const cha
     (void) f; (void) nf; (void) c; (void) nc;
     if (p->copy_open) {
         char trailer[2] = {(char) 0xff, (char) 0xff};
+        flush_copy(p);                 /* sends the COPY header if no row was written since the last sync */
         PQputCopyData(p->conn, trailer, 2);
         PQputCopyEnd(p->conn, NULL);
         res = PQgetResult(p->conn);
@@ -279,6 +318,7 @@ edumpi_sink_t *edumpi_pg_sink_new(void)
     s->open = pg_open;
     s->write = pg_write;
     s->close = pg_close;
+    s->sync = pg_sync;
     return s;
 }
 #else

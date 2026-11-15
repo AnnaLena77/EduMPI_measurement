@@ -21,6 +21,9 @@ typedef struct edumpi_sink {
     int (*open)(struct edumpi_sink *, int rank, int world_size, const char *node);
     int (*write)(struct edumpi_sink *, const edumpi_rec_t *recs, size_t n);
     int (*close)(struct edumpi_sink *, const char *const *funcs, size_t nf, const char *const *comms, size_t nc);
+    /* optional (may be NULL): called after every flush that wrote records; makes what was written visible to readers
+       (the database sink commits its COPY here) */
+    int (*sync)(struct edumpi_sink *);
     void *priv;
 } edumpi_sink_t;
 

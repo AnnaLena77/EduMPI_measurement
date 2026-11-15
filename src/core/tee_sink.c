@@ -23,6 +23,14 @@ static int tee_write(edumpi_sink_t *s, const edumpi_rec_t *recs, size_t n)
     return 0;
 }
 
+static int tee_sync(edumpi_sink_t *s)
+{
+    tee_t *t = s->priv;
+    if (t->a && t->a->sync) t->a->sync(t->a);
+    if (t->b && t->b->sync) t->b->sync(t->b);
+    return 0;
+}
+
 static int tee_close(edumpi_sink_t *s, const char *const *f, size_t nf, const char *const *c, size_t nc)
 {
     tee_t *t = s->priv;
@@ -47,6 +55,7 @@ edumpi_sink_t *edumpi_tee_sink_new(edumpi_sink_t *a, edumpi_sink_t *b)
     s->priv = t;
     s->open = tee_open;
     s->write = tee_write;
+    s->sync = tee_sync;
     s->close = tee_close;
     return s;
 }

@@ -209,33 +209,40 @@ void edumpi_complete(edumpi_rec_t *r)
     }
 }
 
-static void flush_segment(uint64_t s, edumpi_rec_t *base, uint64_t n)
+static uint32_t seg_lo[EDUMPI_MAX_SEGS];      /* first record of the segment that is not written yet; under flush_lock */
+static uint32_t seg_done[EDUMPI_MAX_SEGS];    /* records of the segment written so far; under flush_lock */
+
+/* writes the records [a, b) of a segment to the sink and marks them written */
+static void write_run(edumpi_rec_t *base, uint64_t a, uint64_t b)
 {
-    if (g_sink && n > 0) {
-        g_sink->write(g_sink, base, n);
+    if (g_sink && b > a) {
+        g_sink->write(g_sink, base + a, b - a);
     }
-    for (uint64_t i = 0; i < n; ++i) {
+    for (uint64_t i = a; i < b; ++i) {
         free(base[i].partner_bits);
+        base[i].partner_bits = NULL;
+        atomic_store_explicit(&base[i].state, EDUMPI_S_WRITTEN, memory_order_release);
     }
-    atomic_fetch_add_explicit(&written, n, memory_order_relaxed);
-    atomic_store_explicit(&seg_table[s], FLUSHED, memory_order_release);
-    munmap(base, SEG_BYTES);
+    atomic_fetch_add_explicit(&written, b - a, memory_order_relaxed);
 }
 
+/* Every flush writes all records that are complete, also those of the segment that is still being filled, so that a
+   reader of the database sees them within one flush interval. A record that is still open (a posted receive, a call
+   that has not returned) is skipped and written when it completes. force: write everything (finalize). */
 void edumpi_store_flush(int force)
 {
     uint64_t total, last;
+    int any = 0;
 
     pthread_mutex_lock(&flush_lock);
     total = atomic_load_explicit(&claimed, memory_order_acquire);
     if (total > (uint64_t) EDUMPI_MAX_SEGS * EDUMPI_SEG_EVENTS) {
         total = (uint64_t) EDUMPI_MAX_SEGS * EDUMPI_SEG_EVENTS;
     }
-    last = force ? (total + EDUMPI_SEG_EVENTS - 1) / EDUMPI_SEG_EVENTS : total / EDUMPI_SEG_EVENTS;
+    last = (total + EDUMPI_SEG_EVENTS - 1) / EDUMPI_SEG_EVENTS;
     for (uint64_t s = scan_from; s < last; ++s) {
         edumpi_rec_t *base = atomic_load_explicit(&seg_table[s], memory_order_acquire);
-        uint64_t n = total - s * EDUMPI_SEG_EVENTS;
-        int complete = 1;
+        uint64_t n = total - s * EDUMPI_SEG_EVENTS, i;
 
         if (NULL == base || FLUSHED == base) {
             continue;
@@ -243,25 +250,51 @@ void edumpi_store_flush(int force)
         if (n > EDUMPI_SEG_EVENTS) {
             n = EDUMPI_SEG_EVENTS;
         }
-        for (uint64_t i = 0; i < n; ++i) {
-            if (EDUMPI_S_COMPLETE != atomic_load_explicit(&base[i].state, memory_order_acquire)) {
-                if (!force) {
-                    complete = 0;
-                    break;
+        i = seg_lo[s];
+        while (i < n) {
+            uint64_t a, b;
+            uint32_t st;
+            while (i < n && EDUMPI_S_WRITTEN == atomic_load_explicit(&base[i].state, memory_order_acquire)) {
+                ++i;
+            }
+            a = i;
+            while (i < n) {
+                st = atomic_load_explicit(&base[i].state, memory_order_acquire);
+                if (EDUMPI_S_COMPLETE != st) {
+                    if (!force || EDUMPI_S_WRITTEN == st) {
+                        break;
+                    }
+                    base[i].flags |= EDUMPI_F_NOT_COMPLETED;
+                    if (0 == base[i].end_ns) {
+                        base[i].flags |= EDUMPI_F_NO_END;
+                    }
                 }
-                base[i].flags |= EDUMPI_F_NOT_COMPLETED;
-                if (0 == base[i].end_ns) {
-                    base[i].flags |= EDUMPI_F_NO_END;
-                }
+                ++i;
+            }
+            b = i;
+            if (b > a) {
+                write_run(base, a, b);
+                seg_done[s] += (uint32_t) (b - a);
+                any = 1;
+            }
+            if (i < n && !force) {
+                ++i;                    /* skip the record that is not complete */
             }
         }
-        if (complete) {
-            flush_segment(s, base, n);
+        while (seg_lo[s] < n && EDUMPI_S_WRITTEN == atomic_load_explicit(&base[seg_lo[s]].state, memory_order_acquire)) {
+            ++seg_lo[s];
+        }
+        if (seg_done[s] == n && (n == EDUMPI_SEG_EVENTS || force)) {
+            atomic_store_explicit(&seg_table[s], FLUSHED, memory_order_release);
+            munmap(base, SEG_BYTES);
         }
     }
     while (scan_from < EDUMPI_MAX_SEGS
            && FLUSHED == atomic_load_explicit(&seg_table[scan_from], memory_order_acquire)) {
         ++scan_from;
+    }
+    if (any && g_sink && g_sink->sync) {
+        g_sink->sync(g_sink);
     }
     pthread_mutex_unlock(&flush_lock);
 }

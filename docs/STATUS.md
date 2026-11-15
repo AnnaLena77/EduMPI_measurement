@@ -241,7 +241,8 @@ Algorithm names come from the enumerations of `coll_tuned_<op>_algorithm` and
 
 Not tested: TimescaleDB itself (the test uses the plain table definitions; the GUI and the
 continuous aggregates were not run against rows of the new writer), several nodes writing at once
-to one server, very large runs (batching is per monitor flush, 0.5 s).
+to one server, very large runs. (Correction 2026-11-15, see 3.24: the earlier remark that rows are batched per
+monitor flush was wrong for visibility; rows became visible only at `MPI_Finalize`.)
 
 ### 3.11 Overhead (first measurement, WP-H level L1 microbenchmark)
 
@@ -552,6 +553,34 @@ each rank to two cores (job 10520). The wrapper therefore rewrites `--map-by :PE
 
 Not checked: the real GUI and TimescaleDB (hers); `mpirun` of other users; a frozen MPI build for the prefix (the test used
 `dev-rel`, which changes with the fork branch).
+
+### 3.24 Near-real-time visibility in the database (2026-11-15)
+
+Report from a real GUI run: it took very long until anything was shown. Two causes, both in the first version of the writer:
+
+1. **One `COPY` per rank for the whole run.** PostgreSQL shows the rows of a `COPY` to other sessions only when the command ends
+   (`MPI_Finalize`). The tests of 3.10 and 3.23 only looked after the run.
+2. **Only complete segments (2048 records) were written.** A small program never fills one.
+
+Fix (monitor thread only, the application thread is unchanged): `edumpi_store_flush` now writes every complete record, also from the
+segment that is still being filled (new record state `EDUMPI_S_WRITTEN`); an open record (posted receive, call not returned) is
+skipped and written when it completes; a segment is freed when all its records are written. New optional sink hook `sync`, called
+once after each flush that wrote records: the PostgreSQL sink ends the `COPY` (commit) and starts the next one.
+
+Test `cluster/pg_live_check.sbatch` with `tests/test_live.c` (4 ranks, 8 s, one `Sendrecv` and one `Barrier` per second, one receive
+posted for the whole run; a second session counts the rows every ~0.5 s; flush interval 500 ms):
+
+| version | rows seen by a second session |
+|---|---|
+| before (job 10524) | 0 until the program ended (9.1 s), then all 72 at once |
+| after (job 10523) | first rows at 1.8 s, then 8 to 16 rows per second while the program runs, 72 at the end |
+
+`tests/test_store` (8 threads, 1.6 million records, some kept open and completed later) still passes: every record exactly once.
+
+Not measured: the overhead of the new flush (it runs on the monitor thread; the application thread is unchanged, but one commit per rank
+and flush interval costs the server a round trip) and the delay with many ranks writing to one remote server. The visible delay is the
+flush interval plus the time until the call is complete (`EDUMPI_FLUSH_MS`, default 500); the poll loop of the test has a resolution of
+about 0.5 s.
 
 ### 3.4 Not done yet
 

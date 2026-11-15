@@ -30,7 +30,7 @@ enum {
 };
 
 /* state of a record in the store */
-enum { EDUMPI_S_FREE = 0, EDUMPI_S_OPEN = 1, EDUMPI_S_COMPLETE = 2 };
+enum { EDUMPI_S_FREE = 0, EDUMPI_S_OPEN = 1, EDUMPI_S_COMPLETE = 2, EDUMPI_S_WRITTEN = 3 /* the monitor wrote it to the sink */ };
 
 typedef struct edumpi_rec {
     /* line 1: hot */
