@@ -19,6 +19,8 @@ static _Atomic uint64_t claimed;
 static _Atomic uint64_t dropped;
 static _Atomic uint64_t written;
 static uint64_t scan_from;            /* first segment that may not be flushed; under flush_lock */
+static _Atomic uint64_t flushed_upto; /* copy of scan_from for the readers without the lock */
+static uint64_t g_mem_segs = 1024;    /* thread-less: write when this many segments (256 KB each) are held in memory */
 static pthread_mutex_t flush_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static edumpi_sink_t *g_sink;
@@ -234,7 +236,8 @@ edumpi_rec_t *edumpi_begin(uint16_t func, uint16_t comm, uint32_t flags)
     r->partner = -1;
     r->start_ns = edumpi_now_ns();
     atomic_store_explicit(&r->state, EDUMPI_S_OPEN, memory_order_release);
-    if (__builtin_expect(0 == (idx & (EDUMPI_SEG_EVENTS - 1)) && idx > 0 && g_threadless, 0)) {
+    if (__builtin_expect(0 == (idx & (EDUMPI_SEG_EVENTS - 1)) && idx > 0 && g_threadless, 0)
+        && s - atomic_load_explicit(&flushed_upto, memory_order_relaxed) >= g_mem_segs) {
         inline_flush();
     }
     return r;
@@ -336,6 +339,7 @@ static void flush_locked(int force)
            && FLUSHED == atomic_load_explicit(&seg_table[scan_from], memory_order_acquire)) {
         ++scan_from;
     }
+    atomic_store_explicit(&flushed_upto, scan_from, memory_order_relaxed);
     if (any && g_sink && g_sink->sync) {
         g_sink->sync(g_sink);
     }
@@ -398,6 +402,10 @@ int edumpi_store_init(int rank, int world_size, const char *node, edumpi_sink_t 
     }
     if (sink && 0 != sink->open(sink, rank, world_size, node)) {
         g_sink = NULL;
+    }
+    if (getenv("EDUMPI_MEM_MB")) {            /* thread-less: memory the store may hold before the caller writes (0: every segment) */
+        long mb = atol(getenv("EDUMPI_MEM_MB"));
+        g_mem_segs = mb <= 0 ? 1 : (uint64_t) mb * 4;     /* 256 KB per segment */
     }
     clock_init();
     clock_renew_inline(g_threadless);

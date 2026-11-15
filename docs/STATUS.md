@@ -597,6 +597,45 @@ row 0.1 s.
 
 Not checked: the GUI itself with the fix (hers); whether anything else in the GUI assumes the old local-string start time.
 
+### 3.26 File variant without monitor thread (WP-V2 of `../BACKEND_VARIANTS_PLAN.md`, 2026-11-15)
+
+`EDUMPI_THREAD=0` (default when the sink is `file`; the database sink keeps the thread): no monitor thread. The application thread that
+claims the first record of a new segment tries to write the older segments (try-lock, never waits) and renews the TSC anchor itself
+(after 0.1 s, 0.2 s, ... up to 1 s of ticks; one compare per time stamp). `atexit` writes everything when the program never reaches
+`MPI_Finalize`. The anchor is now sampled between two TSC reads (middle of the best of three): the first calibration had a rate error of
+about 1e-4, which the thread-less mode could not correct quickly (job 10537: 1.2 ms drift over 5 s; after the fix 0.8 us, job 10538).
+
+Checks (jobs 10538, 10540): no additional thread in the process (rank 0: 3 threads without the tool, 3 with `EDUMPI_THREAD=0`, 4 with the
+thread); all 5000 `MPI_Allreduce` calls of both ranks in the file in both modes; `tool_check` 15 PASS; `test_store` (8 threads, 1.6 million
+records, some kept open and completed later) passes in both modes.
+
+Overhead (job 10541, `cluster/tool_overhead_threads.sbatch`, 2 nodes x 2 ranks, file sink on BeeGFS, median of 3, microseconds, PE = cores
+per rank). First finding: writing every segment in the application thread costs about 0.8 us per ping-pong half (the writes to `/data`),
+so thread-less mode **holds the records in memory** and writes at `MPI_Finalize` (or when `EDUMPI_MEM_MB`, default 256 per rank, is
+reached; `EDUMPI_MEM_MB=0` writes every segment).
+
+| ucx | ping-pong half | Allreduce 32 B | Irecv/Isend/Waitall | Bcast 64 KB |
+|---|---|---|---|---|
+| no tool, PE=2 / PE=1 | 1.75 / 1.90 | 13.07 / 14.57 | 2.20 / 2.60 | 68.9 / 71.1 |
+| PMPI only, no thread, PE=1 | 2.49 | 15.31 | 4.04 | 71.6 |
+| MPI_T, thread, PE=2 / PE=1 | 4.67 / 5.41 | 30.15 / 36.93 | 8.04 / 9.74 | 76.7 / 77.6 |
+| MPI_T, thread-less (memory), PE=2 / PE=1 | 4.73 / 5.29 | 30.01 / 33.86 | 8.13 / 9.46 | 74.0 / 77.3 |
+| MPI_T, thread-less, write every segment, PE=1 | 6.12 | 34.09 | 11.03 | 77.4 |
+
+| ob1 | ping-pong half | Allreduce 32 B | Irecv/Isend/Waitall | Bcast 64 KB |
+|---|---|---|---|---|
+| no tool, PE=2 / PE=1 | 3.18 / 3.75 | 21.52 / 25.20 | 3.66 / 3.97 | 62.7 / 66.6 |
+| PMPI only, no thread, PE=1 | 4.43 | 26.21 | 5.49 | 68.5 |
+| MPI_T, thread, PE=2 / PE=1 | 6.89 / 8.72 | 45.30 / 53.08 | 12.50 / 15.41 | 85.3 / 88.4 |
+| MPI_T, thread-less (memory), PE=2 / PE=1 | 6.88 / 7.85 | 44.59 / 50.08 | 12.44 / 14.39 | 82.3 / 87.5 |
+| MPI_T, thread-less, write every segment, PE=1 | 8.65 | 50.70 | 15.76 | 88.4 |
+
+Reading: held in memory, thread-less equals the threaded variant with two cores and is better than it with one core (ob1 ping-pong 7.85 against
+8.72). Not in these numbers: the time of `MPI_Finalize` (the writing happens there) and the memory (128 bytes per call and rank; 256 MB are
+about 2 million calls). Risks: a program that is killed (Slurm time limit: SIGTERM, then SIGKILL; `atexit` does not run on a signal) loses the
+records that were not written; `EDUMPI_MEM_MB` bounds the loss at the price of writing during the run. A signal handler for SIGTERM is not
+implemented.
+
 ### 3.4 Not done yet
 
 Measured overhead of the new events (WP-H), PVARs/CVARs
