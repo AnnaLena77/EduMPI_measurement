@@ -3,3 +3,11 @@ test_store
 test_init
 _check/
 *.dSYM/
+
+# Devcontainer / clangd
+compile_commands.json
+.cache/
+
+# Lokale Editor-/Dev-Container-Konfiguration
+.vscode/
+.devcontainer/

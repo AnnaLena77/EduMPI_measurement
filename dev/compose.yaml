@@ -1,0 +1,124 @@
+name: edumpi-measurement
+
+# Gemeinsame Einstellungen für dev, login und node1..4 (ein Image, Rolle per EDUMPI_ROLE)
+x-edumpi: &edumpi
+  build:
+    context: .
+    dockerfile: Containerfile
+  image: edumpi-measurement-dev:latest
+  # Entrypoint braucht root (munge, sshd, Slurm); unter Podman mit keep-id nicht selbstverständlich
+  user: "0:0"
+  # MPI nutzt Shared Memory zwischen den Ranks, die Docker-Vorgabe von 64 MB ist zu knapp
+  shm_size: 1gb
+
+x-edumpi-env: &edumpi-env
+  # Zeitzone des Rechners (setzt compose.sh): die GUI vergleicht Job-Endzeiten mit ihrer Ortszeit
+  TZ: ${EDUMPI_TZ:-UTC}
+  # Port, unter dem die DB auf dem Rechner erreichbar ist; derselbe gilt in den Containern
+  EDUMPI_DB_PORT: ${EDUMPI_DB_PORT:-5432}
+  # Größe je Slurm-Node (setzt compose.sh passend zum Rechner)
+  EDUMPI_NODE_CPUS: ${EDUMPI_NODE_CPUS:-4}
+  EDUMPI_NODE_MEM: ${EDUMPI_NODE_MEM:-2000}
+
+x-cluster-volumes: &cluster-volumes
+  # Open MPI und GUI-Präfix (gebaut im dev-Container) und /home/dev sind auf allen Nodes gleich,
+  # wie ein geteiltes Dateisystem auf einem echten Cluster
+  - ompi-install:/opt/ompi
+  - edumpi-install:/opt/edumpi
+  - perftools:/opt/perftools
+  - dev-home:/home/dev
+
+services:
+  dev:
+    <<: *edumpi
+    hostname: dev
+    # Das Basis-Image setzt kein WORKDIR; ohne das landen "exec" und Shells in /, und
+    # relative Aufrufe wie "dev/build-edumpi.sh" finden nichts
+    working_dir: /workspaces/EduMPI_measurement
+    environment:
+      <<: *edumpi-env
+      EDUMPI_ROLE: dev
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: edumpi
+      DB_USER: edumpi
+      DB_PW: edumpi
+    volumes:
+      - ..:/workspaces/EduMPI_measurement
+      - ompi-install:/opt/ompi
+      - edumpi-install:/opt/edumpi
+      - perftools:/opt/perftools
+      - dev-home:/home/dev
+    # SELinux (Fedora/RHEL): Repo lesbar machen, ohne es auf dem Host umzulabeln
+    security_opt: ["label=disable"]
+    depends_on:
+      - db
+
+  login:
+    <<: *edumpi
+    hostname: login
+    environment:
+      <<: *edumpi-env
+      EDUMPI_ROLE: login
+    volumes:
+      - ompi-install:/opt/ompi
+      - edumpi-install:/opt/edumpi
+      - perftools:/opt/perftools
+      - dev-home:/home/dev
+      - slurm-state:/var/lib/slurm/slurmctld
+    ports:
+      # SSH für die GUI (Host "edumpi-dev" über dev/ssh/activate)
+      - "127.0.0.1:${EDUMPI_DEV_SSH_PORT:-2222}:22"
+    depends_on:
+      - db
+
+  node1:
+    <<: *edumpi
+    hostname: node1
+    environment: {<<: *edumpi-env, EDUMPI_ROLE: node}
+    volumes: *cluster-volumes
+    depends_on: [login]
+  node2:
+    <<: *edumpi
+    hostname: node2
+    environment: {<<: *edumpi-env, EDUMPI_ROLE: node}
+    volumes: *cluster-volumes
+    depends_on: [login]
+  node3:
+    <<: *edumpi
+    hostname: node3
+    environment: {<<: *edumpi-env, EDUMPI_ROLE: node}
+    volumes: *cluster-volumes
+    depends_on: [login]
+  node4:
+    <<: *edumpi
+    hostname: node4
+    environment: {<<: *edumpi-env, EDUMPI_ROLE: node}
+    volumes: *cluster-volumes
+    depends_on: [login]
+
+  db:
+    image: timescale/timescaledb:latest-pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: edumpi
+      POSTGRES_USER: edumpi
+      POSTGRES_PASSWORD: edumpi
+      TZ: UTC
+    volumes:
+      - edumpi-db:/var/lib/postgresql/data
+      # Wird nur beim allerersten Start (leeres Volume) ausgeführt; Kopie von
+      # EduStore/edustore_schema.sql aus EduMPI (das Tool schreibt dieselben Tabellen)
+      - ./edustore_schema.sql:/docker-entrypoint-initdb.d/10-edustore_schema.sql:ro
+    security_opt: ["label=disable"]
+    ports:
+      # Lokal erreichbar, damit die EduMPI_GUI auf dem Host gegen diese DB laufen kann
+      - "127.0.0.1:${EDUMPI_DB_PORT:-5432}:5432"
+
+volumes:
+  edumpi-db:
+  ompi-install:
+  edumpi-install:
+  perftools:
+  dev-home:
+  slurm-state:

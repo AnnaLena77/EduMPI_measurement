@@ -1,0 +1,8 @@
+# Zusatz für rootless Podman (compose.sh lädt ihn automatisch).
+# Nur dev bindet das Repo ein: der Host-Nutzer wird auf vscode (1000) abgebildet, damit der
+# Build ins Repo schreiben darf. Der Container selbst startet weiter als root (Entrypoint
+# braucht root für munge). Braucht Podman >= 4.3.
+services:
+  dev:
+    userns_mode: "keep-id:uid=1000,gid=1000"
+    user: "0:0"

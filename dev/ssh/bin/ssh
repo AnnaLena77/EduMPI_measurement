@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Wrapper für ssh und scp (scp ist ein Symlink hierauf).
+# Verbindungen zum Host "edumpi-dev" gehen an den Dev-Container (127.0.0.1:2222) mit dem
+# Dev-Key aus dem Repo; ein vom Aufrufer gesetzter Port (die GUI setzt fest -p 22) wird
+# dafür ersetzt. Alle anderen Hosts gehen unverändert an das echte ssh/scp.
+set -uo pipefail
+
+tool="$(basename "$0")"                       # ssh oder scp
+bin_dir="$(cd "$(dirname "$0")" && pwd)"
+ssh_dir="$(cd "$bin_dir/.." && pwd)"
+port="${EDUMPI_DEV_SSH_PORT:-2222}"
+
+# Echtes Programm: erster Treffer im PATH, der nicht dieser Wrapper ist
+real=""
+IFS=: read -r -a path_dirs <<< "$PATH"
+for d in "${path_dirs[@]}"; do
+    [[ -z "$d" || "$(cd "$d" 2>/dev/null && pwd)" == "$bin_dir" ]] && continue
+    if [[ -x "$d/$tool" ]]; then real="$d/$tool"; break; fi
+done
+if [[ -z "$real" ]]; then
+    echo "edumpi-dev: kein echtes $tool im PATH gefunden" >&2
+    exit 127
+fi
+
+is_dev_host() { [[ "$1" =~ ^([^@/:]+@)?edumpi-dev(:.*)?$ ]]; }
+# Entfernter scp-Operand: "host:pfad" oder "user@host:pfad" (Doppelpunkt vor dem ersten /)
+is_remote() { [[ "$1" =~ ^[^/]*: ]]; }
+
+orig=("$@")   # unverändert für alle anderen Hosts
+args=()
+if [[ "$tool" == scp ]]; then
+    port_flag=-P
+    target=0 other=0 end_opts=0
+    while (( $# )); do
+        a="$1"; shift
+        if (( !end_opts )); then
+            case "$a" in
+                --) end_opts=1; args+=("$a"); continue ;;
+                -P) shift; continue ;;          # Port des Aufrufers verwerfen
+                -P?*) continue ;;
+                -[cFiJloSX]) args+=("$a" "${1:-}"); shift; continue ;;
+                -*) args+=("$a"); continue ;;
+            esac
+        fi
+        if is_dev_host "$a"; then target=1
+        elif is_remote "$a"; then other=1
+        fi
+        args+=("$a")
+    done
+    if (( !target )); then exec "$real" "${orig[@]}"; fi
+    if (( other )); then
+        echo "edumpi-dev: scp zwischen edumpi-dev und einem anderen Host wird nicht unterstützt – in zwei Schritten kopieren" >&2
+        exit 2
+    fi
+else
+    port_flag=-p
+    # OpenSSH liest Optionen vor dem Zielhost und direkt danach; ab dem ersten Wort, das keine
+    # Option ist, beginnt der entfernte Befehl – der bleibt unverändert (z. B. "mkdir -p x").
+    # Die GUI ruft auch "ssh exit -p 22 user@host" auf; Zielhost ist dort "exit".
+    dest="" in_cmd=0
+    while (( $# )); do
+        a="$1"; shift
+        if (( in_cmd )); then args+=("$a"); continue; fi
+        case "$a" in
+            -p) shift; continue ;;
+            -p?*) continue ;;
+            -[BbcDEeFIiJLlmOoQRSWw]) args+=("$a" "${1:-}"); shift; continue ;;
+            -*) args+=("$a"); continue ;;
+        esac
+        if [[ -z "$dest" ]]; then dest="$a"; else in_cmd=1; fi
+        args+=("$a")
+    done
+    is_dev_host "$dest" || exec "$real" "${orig[@]}"
+fi
+
+# Git speichert keine 600-Rechte, ssh lehnt den Key sonst ab
+chmod 600 "$ssh_dir/dev_key" 2>/dev/null
+
+# Pfade in Anführungszeichen für ssh selbst (UserKnownHostsFile nimmt eine Liste)
+exec "$real" "$port_flag" "$port" \
+    -o HostName=127.0.0.1 \
+    -o HostKeyAlias=edumpi-dev \
+    -o "UserKnownHostsFile=\"$ssh_dir/known_hosts\"" \
+    -o StrictHostKeyChecking=yes \
+    -o IdentitiesOnly=yes \
+    -i "$ssh_dir/dev_key" \
+    "${args[@]}"
