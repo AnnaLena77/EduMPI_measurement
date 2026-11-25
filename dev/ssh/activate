@@ -1,0 +1,47 @@
+# Nur per "source" verwenden (bash oder zsh):
+#   source dev/ssh/activate
+# Stellt dev/ssh/bin vorne in den PATH dieser Shell. Programme, die von hier aus gestartet
+# werden (z. B. die EduMPI-GUI), erreichen dann den Dev-Container unter dem Host "edumpi-dev".
+# Setzt außerdem EDUMPI_DEV_ENV auf dev/gui.env (Dev-Modus der GUI: Auto-Connect).
+# Rückgängig: edumpi_dev_deactivate (oder Shell schließen).
+
+if [ -n "${BASH_SOURCE:-}" ]; then
+    _edumpi_src="${BASH_SOURCE[0]}"
+elif [ -n "${ZSH_VERSION:-}" ]; then
+    _edumpi_src="${(%):-%x}"
+else
+    echo "dev/ssh/activate: bitte mit bash oder zsh per 'source' laden" >&2
+    return 1 2>/dev/null || exit 1
+fi
+_edumpi_bin="$(cd "$(dirname "$_edumpi_src")/bin" && pwd)"
+_edumpi_env="$(cd "$(dirname "$_edumpi_src")/.." && pwd)/gui.env"
+unset _edumpi_src
+
+case ":$PATH:" in
+    *":$_edumpi_bin:"*) ;;
+    *) EDUMPI_DEV_OLD_PATH="$PATH"; export PATH="$_edumpi_bin:$PATH" ;;
+esac
+unset _edumpi_bin
+
+export EDUMPI_DEV_ENV="$_edumpi_env"
+# Port aus gui.env, falls nicht schon gesetzt (der Wrapper liest EDUMPI_DEV_SSH_PORT)
+if [ -z "${EDUMPI_DEV_SSH_PORT:-}" ]; then
+    EDUMPI_DEV_SSH_PORT="$(sed -n 's/^EDUMPI_DEV_SSH_PORT=//p' "$_edumpi_env")"
+    export EDUMPI_DEV_SSH_PORT
+    EDUMPI_DEV_SET_PORT=1
+fi
+unset _edumpi_env
+
+edumpi_dev_deactivate() {
+    if [ -n "${EDUMPI_DEV_OLD_PATH:-}" ]; then
+        export PATH="$EDUMPI_DEV_OLD_PATH"
+        unset EDUMPI_DEV_OLD_PATH
+    fi
+    if [ -n "${EDUMPI_DEV_SET_PORT:-}" ]; then
+        unset EDUMPI_DEV_SSH_PORT EDUMPI_DEV_SET_PORT
+    fi
+    unset EDUMPI_DEV_ENV
+    unset -f edumpi_dev_deactivate
+}
+
+echo "edumpi-dev aktiv: ssh/scp zu 'edumpi-dev' gehen an den Dev-Container (127.0.0.1:${EDUMPI_DEV_SSH_PORT:-2222})"

@@ -1,0 +1,4 @@
+PATH="/opt/ompi/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+OMPI_MCA_btl="self,sm,tcp"
+OMPI_MCA_smsc="^cma"
+PMIX_MCA_gds="hash"

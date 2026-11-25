@@ -1,0 +1,64 @@
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+
+# Ein Image für alle Rollen (dev, login, node1..4); die Rolle setzt EDUMPI_ROLE.
+#  - Build-Toolchain für Open MPI aus Git (autogen.pl braucht Autotools, Flex, Perl und
+#    Python), libpq für den PostgreSQL-Sink der Messbibliothek, clangd/bear für die
+#    Code-Navigation in VS Code
+#  - Slurm (23.11 aus Ubuntu 24.04), munge, sshd für den simulierten Cluster
+#  - gcc auch auf den Nodes nötig: die GUI kompiliert das Programm im Slurm-Job
+#  - socat leitet 127.0.0.1:5432 auf den DB-Container weiter (siehe entrypoint.sh)
+#  - gcc-13-plugin-dev, binutils-dev, libunwind-dev, cmake (für das von Score-P geladene
+#    libgotcha): Compiler-Instrumentierung, Symbolauflösung und Sampling von
+#    Score-P (Score-P selbst baut dev/build-scorep.sh in ein Volume, nicht ins Image)
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get install -y --no-install-recommends \
+        build-essential gfortran pkg-config gcc-13-plugin-dev binutils-dev libunwind-dev cmake \
+        autoconf automake libtool libtool-bin m4 flex perl \
+        zlib1g-dev \
+        libpq-dev postgresql-client \
+        gdb clangd bear ccache \
+        git ca-certificates python3 \
+        slurmctld slurmd slurm-client munge openssh-server tini socat \
+    && rm -rf /var/lib/apt/lists/*
+
+# Nutzer für Jobs und SSH-Login; die GUI legt alles unter /home/<user>/eduMPI_files ab.
+# UID 1001, weil 1000 schon vscode ist.
+# /opt/ompi: Open MPI (dev/build-ompi.sh), /opt/edumpi: GUI-Präfix mit libedumpi.so und den
+# Wrappern mpicc/mpirun (dev/build-edumpi.sh); beide sind Volumes.
+# Score-P/Scalasca liegen im Volume /opt/perftools; die GUI erwartet sie fest unter
+# /opt/scorep und /opt/scalasca
+RUN useradd -m -u 1001 -s /bin/bash dev \
+    && install -d -o vscode -g vscode /opt/ompi /opt/edumpi /opt/perftools \
+    && ln -s perftools/scorep /opt/scorep \
+    && ln -s perftools/scalasca /opt/scalasca
+
+# Slurm: Konfiguration und fester (unsicherer) Dev-Munge-Key, in allen Containern gleich
+COPY slurm/cgroup.conf /etc/slurm/
+COPY slurm/slurm.conf /etc/edumpi/slurm.conf.in
+COPY slurm/munge.key /etc/edumpi/munge.key
+
+# SSH: feste Host-Keys und der Dev-Key aus dev/ssh/ – nach jedem Neubau dieselbe Identität
+COPY ssh/hostkeys/ssh_host_ed25519_key ssh/hostkeys/ssh_host_ed25519_key.pub /etc/ssh/
+COPY ssh/dev_key.pub /etc/ssh/authorized_keys/dev
+COPY container/sshd_edumpi.conf /etc/ssh/sshd_config.d/edumpi.conf
+RUN rm -f /etc/ssh/ssh_host_rsa_key* /etc/ssh/ssh_host_ecdsa_key* \
+    && chmod 600 /etc/ssh/ssh_host_ed25519_key \
+    && chmod 644 /etc/ssh/authorized_keys/dev \
+    && rm -f /etc/update-motd.d/* /etc/legal
+
+# Umgebung für SSH-Sitzungen (pam_env) – Slurm reicht sie an die Jobs weiter
+COPY container/environment /etc/environment
+
+COPY container/nix-shell /usr/local/bin/nix-shell
+COPY container/entrypoint.sh /usr/local/sbin/edumpi-entrypoint
+RUN chmod 755 /usr/local/bin/nix-shell /usr/local/sbin/edumpi-entrypoint
+
+# Im PATH steht das reine Open MPI (GUI-Modi "ohne EduMPI" und Score-P); die Messung läuft nur
+# über den Installationspfad /opt/edumpi/bin/mpirun, den die GUI im EduMPI-Modus aufruft
+ENV OMPI_PREFIX=/opt/ompi \
+    EDUMPI_PREFIX=/opt/edumpi \
+    TZ=UTC
+ENV PATH=${OMPI_PREFIX}/bin:${PATH}
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/sbin/edumpi-entrypoint"]
+CMD ["sleep", "infinity"]
